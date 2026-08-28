@@ -42,7 +42,7 @@ async function get(url, env, signalTimeout = TIMEOUT_MS) {
         // Identifies us in origin logs, and is what the Cloudflare WAF skip
         // rule matches. A monitor that gets bot-challenged reports a healthy
         // site as down, and false alarms are how a monitor gets ignored.
-        'User-Agent': 'Atelier-Worker/1.0 (+https://github.com/nalipaz/atelier-status)',
+        'User-Agent': 'Atelier-Worker/1.0 (+https://github.com/bookwithatelier/status)',
         'X-Atelier-Monitor': env.MONITOR_TOKEN || '',
         // Belt and braces against an intermediate cache; the endpoint already
         // sends no-store on the way back.

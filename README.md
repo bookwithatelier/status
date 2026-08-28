@@ -158,7 +158,7 @@ files, and it can only push that regeneration back with a `GH_PAT`. Do it in
 the other order and the first run fails on a permissions error that reads like
 something else.
 
-1. **Create this as an empty public repo** (`gh repo create nalipaz/atelier-status --public`).
+1. **Create this as an empty public repo** (`gh repo create bookwithatelier/status --public`).
 2. **Settings → Secrets and variables → Actions**, add:
    - `GH_PAT` — a PAT with `repo` + `workflow`. Upptime commits results, opens
      issues, and rewrites its own workflow files with it. The built-in
@@ -180,7 +180,7 @@ something else.
 
    | Type | Name | Content | Proxy |
    |---|---|---|---|
-   | CNAME | `status` | `nalipaz.github.io` | **DNS only (grey cloud)** |
+   | CNAME | `status` | `bookwithatelier.github.io` | **DNS only (grey cloud)** |
 
    Grey cloud is not optional — proxying GitHub Pages breaks its automatic TLS
    provisioning, and the page will serve a certificate error instead of a

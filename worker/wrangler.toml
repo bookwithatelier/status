@@ -29,7 +29,7 @@ id = "PASTE_KV_NAMESPACE_ID_HERE"
 # The private repo that receives outage issues. NOT this repository: an alert
 # names the site, and most of the monitored sites are prospect pitch sites for
 # businesses that have not agreed to anything.
-ALERT_ISSUE_REPO = "nalipaz/timberlodgeparlor"
+ALERT_ISSUE_REPO = "bookwithatelier/atelier"
 
 # ---------------------------------------------------------------------------
 # Secrets — set with `npx wrangler secret put <NAME>`, never in this file.

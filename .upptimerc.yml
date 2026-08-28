@@ -22,14 +22,14 @@
 #
 # Adding a URL here is a publication decision. Make it deliberately.
 
-owner: nalipaz
-repo: atelier-status
+owner: bookwithatelier
+repo: status
 
 # Identifies the checker in origin logs, and — more importantly — is what a
 # Cloudflare WAF skip rule can match on. See "Cloudflare" in README.md: a
 # monitor that gets bot-challenged reports a healthy site as down, and false
 # alarms are how a monitor gets ignored.
-user-agent: "Atelier-Upptime/1.0 (+https://github.com/nalipaz/atelier-status)"
+user-agent: "Atelier-Upptime/1.0 (+https://github.com/bookwithatelier/status)"
 
 # Authoritative secret allowlist. Only these are exposed to the workflows.
 # MONITOR_TOKEN is a shared value the Cloudflare WAF rule matches so these
