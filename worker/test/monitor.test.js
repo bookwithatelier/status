@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 
 import { reconcile } from '../src/state.js';
 import { dueTargets, privateTargets, TIERS } from '../src/targets.js';
-import { vendorSummary } from '../src/vendors.js';
+import { NORMALISERS, VENDORS, vendorSummary } from '../src/vendors.js';
 import { humanDuration, smsBody } from '../src/alerts.js';
 
 const NOW = 1_800_000_000;
@@ -220,4 +220,48 @@ test('duration reads naturally at every scale', () => {
   assert.equal(humanDuration(150), '3m');
   assert.equal(humanDuration(3600), '1h');
   assert.equal(humanDuration(16_200), '4h30m');
+});
+
+// ---------------------------------------------------------------------------
+// Vendor status parsing.
+//
+// Added after the live endpoints proved the original assumption wrong: three
+// of these five vendors publish three different shapes, and two of them 404
+// on the Statuspage path we were using. That failure was invisible — an
+// unreachable vendor and a wrong URL both degrade to 'unknown', so the
+// monitor reported Stripe and Postmark as unknown indefinitely and nothing
+// ever complained.
+// ---------------------------------------------------------------------------
+
+test('each vendor shape normalises into Statuspage vocabulary', () => {
+  assert.equal(
+    NORMALISERS.statuspage({ status: { indicator: 'major', description: 'Partial Outage' } }).indicator,
+    'major'
+  );
+  assert.equal(NORMALISERS.stripe({ largestatus: 'up', message: 'All systems' }).indicator, 'none');
+  assert.equal(NORMALISERS.stripe({ largestatus: 'degraded' }).indicator, 'minor');
+  assert.equal(NORMALISERS.stripe({ largestatus: 'down' }).indicator, 'major');
+  assert.equal(NORMALISERS.postmark({ page: { state: 'operational' } }).indicator, 'none');
+  assert.equal(NORMALISERS.postmark({ page: { state: 'degraded_performance' } }).indicator, 'minor');
+  assert.equal(NORMALISERS.postmark({ page: { state: 'major_outage' } }).indicator, 'critical');
+});
+
+test('an unrecognised vendor value is unknown, never all-clear', () => {
+  // A vendor rewording its states must not read as "everything is fine" — the
+  // whole point of this data is to be believed when it says something is off.
+  assert.equal(NORMALISERS.statuspage({ status: { indicator: 'brand_new_word' } }).indicator, 'unknown');
+  assert.equal(NORMALISERS.stripe({ largestatus: 'wobbly' }).indicator, 'unknown');
+  assert.equal(NORMALISERS.postmark({ page: { state: 'having_a_moment' } }).indicator, 'unknown');
+  assert.equal(NORMALISERS.statuspage({}).indicator, 'unknown');
+  assert.equal(NORMALISERS.stripe({}).indicator, 'unknown');
+  assert.equal(NORMALISERS.postmark({}).indicator, 'unknown');
+});
+
+test('every vendor declares a shape that has a normaliser', () => {
+  for (const vendor of VENDORS) {
+    assert.ok(
+      NORMALISERS[vendor.shape],
+      `${vendor.id} declares shape "${vendor.shape}" with no normaliser`
+    );
+  }
 });

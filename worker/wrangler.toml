@@ -23,7 +23,7 @@ crons = ["* * * * *"]
 #   npx wrangler kv namespace create STATE
 [[kv_namespaces]]
 binding = "STATE"
-id = "PASTE_KV_NAMESPACE_ID_HERE"
+id = "fcae39d0bd5a457096d22038050c698a"
 
 [vars]
 # The private repo that receives outage issues. NOT this repository: an alert
