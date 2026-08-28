@@ -11,11 +11,16 @@
 # to anything and in most cases do not know the site exists. Publishing that
 # list would be a disclosure, not a status page.
 #
-# So: platform surfaces and real tenants only. Prospect sites are monitored
-# from the Cloudflare Worker in worker/, whose target list is a secret and
-# never enters this repository.
+# So NO customer site is named here at all — not tenants, not prospects. They
+# are reported by CATEGORY through the `?scope=` aggregate, which answers
+# 200/503 for a whole group and returns counts rather than hostnames. Only the
+# platform's own surfaces are named, because they are ours.
 #
-# Adding a site here is a publication decision. Make it deliberately.
+# Per-site detail — which tenant, which prospect, what broke — lives in the
+# Cloudflare Worker in worker/, which is private, and in the outage issues it
+# files in the private repo.
+#
+# Adding a URL here is a publication decision. Make it deliberately.
 
 owner: nalipaz
 repo: atelier-status
@@ -41,13 +46,8 @@ sites:
   # page lies. /health.php answers `no-store`, so it always reaches the
   # origin, and it returns 503 only when the site genuinely cannot serve.
   # It is the more truthful signal, at the cost of a less pretty URL.
-  - name: Timberlodge Parlor
-    url: https://timberlodgeparlor.com/health.php
-    headers:
-      - "X-Atelier-Monitor: $MONITOR_TOKEN"
-    maxResponseTime: 5000
-    maxRetries: 2
 
+  # --- Platform surfaces: ours, so they are named. -------------------------
   - name: Book With Atelier
     url: https://bookwithatelier.com/health.php
     headers:
@@ -62,6 +62,37 @@ sites:
     maxResponseTime: 5000
     maxRetries: 2
 
+  # --- Customer sites: reported by CATEGORY, never by name. ----------------
+  #
+  # `?scope=` aggregates every site in a category into one 200/503 and a body
+  # of counts and reason strings — no hostname, no site directory, nothing a
+  # reader could diff back into a membership list. Membership is declared on
+  # the production box in env/_monitor-scopes.txt and never leaves it.
+  #
+  # One member down turns the whole category red. That is correct and it is
+  # the case that matters: the 2026-08-28 outage hit exactly one site out of
+  # thirty-two, and a category that only went red when every member did would
+  # have stayed green through all four and a half hours of it.
+  #
+  # Both are served by bookwithatelier.com — every site on this platform runs
+  # on the same box, so an aggregate served from any of them is a statement
+  # about that box. The trade-off to know: if bwa's own vhost breaks while the
+  # rest are fine, these two rows go red with it. The row above tells you that
+  # is what happened.
+  - name: Tenant sites
+    url: https://bookwithatelier.com/health.php?scope=tenant
+    headers:
+      - "X-Atelier-Monitor: $MONITOR_TOKEN"
+    maxResponseTime: 15000
+    maxRetries: 2
+
+  - name: Prospect sites
+    url: https://bookwithatelier.com/health.php?scope=prospect
+    headers:
+      - "X-Atelier-Monitor: $MONITOR_TOKEN"
+    maxResponseTime: 20000
+    maxRetries: 2
+
 # Who gets the GitHub issue — which is what actually delivers the alert, via
 # GitHub's own notification email, on infrastructure that has nothing to do
 # with ours.
@@ -70,14 +101,14 @@ assignees:
 
 status-website:
   name: Atelier Status
-  # Swap to `cname: status.bookwithatelier.com` once the DNS record exists.
-  baseUrl: /atelier-status
+  cname: status.bookwithatelier.com
   introTitle: "Live and historical status for the Atelier booking platform."
   introMessage: >
     Checks run from GitHub's infrastructure every five minutes, independently
-    of the servers they are watching. Each site is checked at its origin
-    rather than at the CDN edge, so a cached page cannot make an outage look
-    like uptime.
+    of the servers they are watching, and hit each origin directly rather than
+    the CDN edge — so a cached page cannot make an outage look like uptime.
+    Customer sites are reported as a group; individual businesses are not
+    named here.
   navbar:
     - title: Status
       href: /

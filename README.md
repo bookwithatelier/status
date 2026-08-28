@@ -71,10 +71,20 @@ Config in [`.upptimerc.yml`](.upptimerc.yml); the workflows in
 `.github/workflows/` are generated from it and should not be hand-edited.
 
 Checks run on GitHub Actions, commit their results to this repo, and open a
-GitHub issue when a site goes down — which GitHub then emails, on
+GitHub issue when something goes down — which GitHub then emails, on
 infrastructure that has nothing to do with ours.
 
-**Every URL in `.upptimerc.yml` is published.** See the next section.
+Four rows, and only two of them name anything:
+
+| Row | Checks |
+|---|---|
+| Book With Atelier | `bookwithatelier.com/health.php` |
+| Atelier Studio | `studio.bookwithatelier.com/health.php` |
+| **Tenant sites** | `?scope=tenant` — every tenant at once, by category |
+| **Prospect sites** | `?scope=prospect` — every prospect at once, by category |
+
+**No customer site is named anywhere in this repository.** See the next
+section.
 
 ### 3. The Cloudflare Worker — minute-level detection and SMS
 
@@ -104,15 +114,25 @@ repository is public, because GitHub Pages on the free tier requires it.
 
 So the split is:
 
-- **Published** (`.upptimerc.yml`, the status page): platform surfaces and real
-  tenants only — bookwithatelier.com, studio.bookwithatelier.com,
-  timberlodgeparlor.com.
-- **Unpublished** (the Worker's `PRIVATE_TARGETS` secret): everything else. Not
-  in a file here, not in a comment, not in git history. Generated from the
-  production box by [`scripts/sync-private-targets.sh`](scripts/sync-private-targets.sh)
-  and pushed straight into a Worker secret.
+- **Named publicly**: the platform's own surfaces — bookwithatelier.com and
+  studio.bookwithatelier.com. They are ours.
+- **Reported by category**: every customer site, tenant and prospect alike, via
+  `/health.php?scope=`. That endpoint aggregates a whole category into one
+  200/503 and a body of counts and reason strings — no hostname, no site
+  directory, nothing a reader could diff back into a membership list.
+  Membership is declared on the production box in `env/_monitor-scopes.txt`
+  and never leaves it.
+- **Named privately only**: per-site detail lives in the Worker's
+  `PRIVATE_TARGETS` secret and in the outage issues it files in the private
+  repo. Not in a file here, not in a comment, not in git history. Generated
+  from the box by [`scripts/sync-private-targets.sh`](scripts/sync-private-targets.sh).
 
-Adding a site to `.upptimerc.yml` is a **publication decision**. Make it
+One failing member turns its whole category red. That is the case that
+matters: the 2026-08-28 outage hit exactly one site out of thirty-two, and a
+category that only went red when every member did would have stayed green
+through all four and a half hours of it.
+
+Adding a URL to `.upptimerc.yml` is a **publication decision**. Make it
 deliberately.
 
 ## Why the public page checks `/health.php` and not `/`
@@ -155,10 +175,17 @@ something else.
 5. **Watch the repo** (or stay assigned in `.upptimerc.yml`) so the issues
    actually reach an inbox. An issue nobody is subscribed to is the
    `FRONT DOOR DOWN` block all over again.
-6. For a custom domain, replace `baseUrl` with `cname: status.bookwithatelier.com`
-   in `.upptimerc.yml` and add the CNAME to `nalipaz.github.io` in Cloudflare
-   DNS (**DNS-only, grey cloud** — proxying GitHub Pages breaks its TLS
-   provisioning).
+6. **DNS.** The page is configured for `status.bookwithatelier.com`. Add in
+   Cloudflare DNS for the `bookwithatelier.com` zone:
+
+   | Type | Name | Content | Proxy |
+   |---|---|---|---|
+   | CNAME | `status` | `nalipaz.github.io` | **DNS only (grey cloud)** |
+
+   Grey cloud is not optional — proxying GitHub Pages breaks its automatic TLS
+   provisioning, and the page will serve a certificate error instead of a
+   status. Then set the custom domain under **Settings → Pages** and tick
+   *Enforce HTTPS* once the certificate is issued.
 
 ### Worker
 
@@ -186,6 +213,40 @@ curl -H "Authorization: Bearer $DASHBOARD_TOKEN" https://atelier-monitor.<subdom
 ```
 
 That endpoint is 404 without the token, because it lists the private targets.
+
+### The production box
+
+The category rows need one file on the server, outside the docroot. It is
+gitignored like everything else in `env/`; the private repo ships
+`env.monitor-scopes.example.txt` as a starting point.
+
+```
+/var/www/html/atelier/env/_monitor-scopes.txt
+
+  bookwithatelier.com          platform
+  studio.bookwithatelier.com   platform
+  demoweb                      platform
+  demo.bookwithatelier.com     platform
+  timberlodgeparlor.com        tenant
+  # anything unlisted is a prospect
+```
+
+Two things about that default. It is the safe direction — a newly provisioned
+site nobody has classified must not silently join the tier that sends an SMS
+at 2am, nor silently appear as a tenant on a public page. And it means adding
+a prospect site needs no monitoring change at all: it is covered the moment it
+exists.
+
+Retired tenants go in `env/_monitor-exclude.txt` (one directory per line)
+instead. Their hosts answer 410 by design, and monitoring one produces a
+permanent, correct, useless outage.
+
+Both files must be readable by `www-data`, like everything else in `env/` —
+which is the entire subject of this repository:
+
+```bash
+find env -maxdepth 1 -type f ! -group www-data -printf '%p %u:%g %m\n'
+```
 
 ### Cloudflare
 
