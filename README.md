@@ -1,0 +1,245 @@
+# Atelier Status
+
+Outage detection, alerting and the public status page for the Atelier booking
+platform.
+
+<!--start: status pages-->
+<!--end: status pages-->
+
+## Why this exists
+
+On **2026-08-28**, timberlodgeparlor.com — the platform's only real tenant —
+was down from 02:23 to 06:57. Four and a half hours.
+
+Files under `env/` had drifted to group `nicholas` while PHP-FPM runs as
+`www-data`, so `env/timberlodgeparlor.com.env.yml` became unreadable and Drupal
+could not bootstrap. A second wave of the same fault hit four `*.sites.yml`
+files and broke a sibling site's front door with a 400. Both were fixed with
+`chgrp www-data`. **The cause of the group change was never identified and may
+recur.**
+
+Nothing alerted. The alert was Nicholas looking at his phone when he woke up.
+
+The second lesson is the more uncomfortable one. `scripts/deploy.sh` in the
+private repo **already** printed a `FRONT DOOR DOWN` block, and had been
+printing it for hours — but deploy output was being filtered down to a success
+grep, so nobody read it. *Detection that nobody looks at is not detection.*
+Every design choice here is downstream of those two sentences.
+
+## Three layers
+
+Each is useful on its own, and each covers a blind spot the others have.
+
+| | Runs on | Interval | Alerts via | Blind to |
+|---|---|---|---|---|
+| **Health endpoint** | The origin itself | on request | nothing — it is passive | itself, when the box is truly gone |
+| **Upptime** | GitHub Actions | ~5 min, best-effort | GitHub issue → email | GitHub being down |
+| **Worker** | Cloudflare | 1 min | Twilio SMS + GitHub issue | **Cloudflare being down** |
+
+The last column is why there are two monitors and not one. A Worker runs on
+Cloudflare and therefore cannot detect a Cloudflare outage; GitHub Actions
+keeps checking when Cloudflare is what broke. Conversely GitHub's `schedule:`
+is best-effort and routinely fires five to fifteen minutes late, which is too
+slow to be the only detector for a working salon. **Do not collapse them into
+one.**
+
+### 1. The health endpoint
+
+Lives in the private `atelier` repo at `web/health.php`, with its probes in
+`web/modules/atelier/atelier_health/`. See that module's README for the full
+contract. In brief:
+
+```
+GET https://<site>/health.php
+  200 {"status":"ok"|"degraded", "reasons":[], "checks":{...}}
+  503 {"status":"fail", "reasons":["env_file_unreadable"], ...}
+```
+
+It is a bare PHP file rather than a Drupal route, because the outage it exists
+for *was Drupal being unable to boot*. It checks the env files, the database,
+cron, the queues, calendar-sync health and per-channel notification failure
+rates. It is **passive** — it reports and never dispatches — and it **leaks
+nothing**: counts, booleans, ages and fixed identifiers only, never a filename
+from `env/`.
+
+`reasons` is the point of the whole thing. `Timberlodge Parlor DOWN` costs an
+hour of guessing; `Timberlodge Parlor DOWN — env_file_unreadable` does not.
+
+### 2. Upptime — the public status page
+
+Config in [`.upptimerc.yml`](.upptimerc.yml); the workflows in
+`.github/workflows/` are generated from it and should not be hand-edited.
+
+Checks run on GitHub Actions, commit their results to this repo, and open a
+GitHub issue when a site goes down — which GitHub then emails, on
+infrastructure that has nothing to do with ours.
+
+**Every URL in `.upptimerc.yml` is published.** See the next section.
+
+### 3. The Cloudflare Worker — minute-level detection and SMS
+
+Source in [`worker/`](worker/). One cron trigger every minute; per-tier
+intervals are decided in `worker/src/targets.js`.
+
+| Tier | Interval | Hard down | Degraded |
+|---|---|---|---|
+| `tenant` (TLP) | 1 min | **SMS** + issue | issue after 15 min |
+| `platform` (bwa, studio) | 5 min | issue | issue after 30 min |
+| `prospect` | 15 min | issue, unlisted | never |
+
+SMS goes through the Twilio REST API **directly**, with the Worker's own
+credentials. It deliberately does not touch the platform's SMS gateway,
+because that gateway runs on the box being watched — sending the "the box is
+down" message through the box is how an outage becomes silent.
+
+The email path is a GitHub issue in the **private** repo, not this one. Same
+reason as everything else: an alert names the site.
+
+## The constraint that shapes everything: do not publish the site list
+
+The platform runs about 32 sites and has **one** real tenant. The rest are
+unsolicited **prospect pitch sites** — built for local businesses that have not
+agreed to anything and in most cases do not know the site exists. This
+repository is public, because GitHub Pages on the free tier requires it.
+
+So the split is:
+
+- **Published** (`.upptimerc.yml`, the status page): platform surfaces and real
+  tenants only — bookwithatelier.com, studio.bookwithatelier.com,
+  timberlodgeparlor.com.
+- **Unpublished** (the Worker's `PRIVATE_TARGETS` secret): everything else. Not
+  in a file here, not in a comment, not in git history. Generated from the
+  production box by [`scripts/sync-private-targets.sh`](scripts/sync-private-targets.sh)
+  and pushed straight into a Worker secret.
+
+Adding a site to `.upptimerc.yml` is a **publication decision**. Make it
+deliberately.
+
+## Why the public page checks `/health.php` and not `/`
+
+These sites sit behind Cloudflare. A cached edge response for `/` will happily
+report a dead origin as healthy — that is a status page telling a comfortable
+lie. `/health.php` answers `no-store`, always reaches the origin, and returns
+503 only when the site genuinely cannot serve. Less pretty URL, more truthful
+page.
+
+The Worker checks `/` too, as a second opinion when `/health.php` does not
+answer. That one extra request separates two failures that look identical from
+outside: *health endpoint broken, site fine* (nobody should be woken up) from
+*site down* (somebody should).
+
+## Setup
+
+### Upptime
+
+**Order matters here.** Create the repo empty, add the secrets, *then* push —
+pushing `.upptimerc.yml` triggers `setup.yml`, which regenerates the workflow
+files, and it can only push that regeneration back with a `GH_PAT`. Do it in
+the other order and the first run fails on a permissions error that reads like
+something else.
+
+1. **Create this as an empty public repo** (`gh repo create nalipaz/atelier-status --public`).
+2. **Settings → Secrets and variables → Actions**, add:
+   - `GH_PAT` — a PAT with `repo` + `workflow`. Upptime commits results, opens
+     issues, and rewrites its own workflow files with it. The built-in
+     `GITHUB_TOKEN` cannot touch `.github/workflows/`.
+   - `MONITOR_TOKEN` — see *Cloudflare* below.
+3. **Push.** The workflows here already carry the right `SECRETS_CONTEXT`
+   allowlist (`MONITOR_TOKEN` only), pre-generated to match what
+   `.upptimerc.yml`'s `secrets:` key produces — so the very first check sends
+   a real header rather than the literal string `$MONITOR_TOKEN`. They are
+   regenerated from `.upptimerc.yml` on every push to it; do not hand-edit
+   them beyond that.
+4. **Settings → Pages** → deploy from branch `gh-pages` (the `site` workflow
+   creates it on its first successful run).
+5. **Watch the repo** (or stay assigned in `.upptimerc.yml`) so the issues
+   actually reach an inbox. An issue nobody is subscribed to is the
+   `FRONT DOOR DOWN` block all over again.
+6. For a custom domain, replace `baseUrl` with `cname: status.bookwithatelier.com`
+   in `.upptimerc.yml` and add the CNAME to `nalipaz.github.io` in Cloudflare
+   DNS (**DNS-only, grey cloud** — proxying GitHub Pages breaks its TLS
+   provisioning).
+
+### Worker
+
+```bash
+cd worker
+npm install
+npx wrangler kv namespace create STATE     # paste the id into wrangler.toml
+npx wrangler secret put MONITOR_TOKEN
+npx wrangler secret put TWILIO_ACCOUNT_SID
+npx wrangler secret put TWILIO_AUTH_TOKEN
+npx wrangler secret put TWILIO_FROM        # a Twilio number, NOT the shop line
+npx wrangler secret put ALERT_SMS_TO       # platform ops' mobile
+npx wrangler secret put GITHUB_PAT         # Issues: read/write on the private repo
+npx wrangler secret put DASHBOARD_TOKEN
+npx wrangler deploy
+
+cd .. && ./scripts/sync-private-targets.sh          # review
+cd .. && ./scripts/sync-private-targets.sh --push   # then set PRIVATE_TARGETS
+```
+
+Verify with `npx wrangler tail`, or hit the debug endpoint:
+
+```bash
+curl -H "Authorization: Bearer $DASHBOARD_TOKEN" https://atelier-monitor.<subdomain>.workers.dev/
+```
+
+That endpoint is 404 without the token, because it lists the private targets.
+
+### Cloudflare
+
+The monitored sites are behind Cloudflare, and **Cloudflare already challenges
+automated requests to them** — `deploy.sh`'s front-door check has to inspect
+`cf-mitigated: challenge` headers to tell a challenge apart from a real
+failure. A challenged monitor reports a healthy site as down, and false alarms
+are exactly how a monitor gets ignored.
+
+Add one WAF custom rule per zone, action **Skip** (all managed rules, bot
+management, rate limiting):
+
+```
+http.request.uri.path eq "/health.php"
+  and http.request.headers["x-atelier-monitor"][0] eq "<MONITOR_TOKEN>"
+```
+
+The token is not authentication — `/health.php` is unauthenticated by design
+and discloses nothing. It is a stable, unspoofed-in-practice way for the WAF to
+recognise our own checkers. Both monitors send it: Upptime as a per-site
+header, the Worker as `X-Atelier-Monitor`.
+
+### Alert recipients
+
+Outage alerts go to **platform operations only** — never to a tenant, never to
+a tenant's staff, never to a prospect. Telling a tenant their site is down is a
+decision a person makes, through official channels, after they know what is
+actually happening.
+
+In particular `ALERT_SMS_TO` is platform ops' mobile. It is **not** the shop
+line, which is a phone a working barber reads all day.
+
+## Testing
+
+```bash
+cd worker && npm test    # node --test, no dependencies, no Workers runtime
+```
+
+The escalation logic is what is tested, because both of its failure modes are
+silent: alert too eagerly and the alerts get filtered; alert too reluctantly
+and there is no detection. Neither shows up as a crash.
+
+The health endpoint's own tests live in the private repo
+(`web/modules/atelier/atelier_health/tests/`) and run in its unit gate.
+
+## Known limitations, accepted
+
+- **GitHub `schedule:` is best-effort.** Five minutes nominal, fifteen is
+  routine, worse under load. That is why the Worker exists.
+- **The Worker cannot see a Cloudflare outage.** That is why Upptime exists.
+- **Neither can see a total network partition of the origin's provider** if it
+  also takes out DNS — both would report "down", which is correct, but neither
+  can tell you why. `/health.php` from inside the box, over SSH, is the
+  fallback: `php web/health.php --site=<dir> --verbose --no-cache`.
+- **Free-tier budgets are real.** Workers KV allows 1,000 writes a day against
+  1,440 wake-ups, so the Worker's state is deliberately shaped to change only
+  on transitions. Do not add a per-tick counter to it.

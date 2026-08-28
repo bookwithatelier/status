@@ -1,0 +1,103 @@
+# Upptime configuration — the public half of Atelier's outage detection.
+#
+# READ THIS BEFORE ADDING A SITE
+# ------------------------------
+# This repository is PUBLIC (GitHub Pages on the free tier requires it), which
+# means every URL in this file is crawlable, diffable through git history, and
+# listed by name on the status page.
+#
+# Atelier runs ~32 sites but has exactly ONE real tenant. The rest are
+# unsolicited prospect pitch sites, built for businesses that have not agreed
+# to anything and in most cases do not know the site exists. Publishing that
+# list would be a disclosure, not a status page.
+#
+# So: platform surfaces and real tenants only. Prospect sites are monitored
+# from the Cloudflare Worker in worker/, whose target list is a secret and
+# never enters this repository.
+#
+# Adding a site here is a publication decision. Make it deliberately.
+
+owner: nalipaz
+repo: atelier-status
+
+# Identifies the checker in origin logs, and — more importantly — is what a
+# Cloudflare WAF skip rule can match on. See "Cloudflare" in README.md: a
+# monitor that gets bot-challenged reports a healthy site as down, and false
+# alarms are how a monitor gets ignored.
+user-agent: "Atelier-Upptime/1.0 (+https://github.com/nalipaz/atelier-status)"
+
+# Authoritative secret allowlist. Only these are exposed to the workflows.
+# MONITOR_TOKEN is a shared value the Cloudflare WAF rule matches so these
+# checks skip bot management; it is NOT authentication — /health.php is
+# unauthenticated by design and reveals nothing.
+secrets:
+  - MONITOR_TOKEN
+
+sites:
+  # Every entry points at /health.php rather than at /, deliberately.
+  #
+  # These sites sit behind Cloudflare, and a cached edge response for / would
+  # keep this page green while the origin is dead — the exact way a status
+  # page lies. /health.php answers `no-store`, so it always reaches the
+  # origin, and it returns 503 only when the site genuinely cannot serve.
+  # It is the more truthful signal, at the cost of a less pretty URL.
+  - name: Timberlodge Parlor
+    url: https://timberlodgeparlor.com/health.php
+    headers:
+      - "X-Atelier-Monitor: $MONITOR_TOKEN"
+    maxResponseTime: 5000
+    maxRetries: 2
+
+  - name: Book With Atelier
+    url: https://bookwithatelier.com/health.php
+    headers:
+      - "X-Atelier-Monitor: $MONITOR_TOKEN"
+    maxResponseTime: 5000
+    maxRetries: 2
+
+  - name: Atelier Studio
+    url: https://studio.bookwithatelier.com/health.php
+    headers:
+      - "X-Atelier-Monitor: $MONITOR_TOKEN"
+    maxResponseTime: 5000
+    maxRetries: 2
+
+# Who gets the GitHub issue — which is what actually delivers the alert, via
+# GitHub's own notification email, on infrastructure that has nothing to do
+# with ours.
+assignees:
+  - nalipaz
+
+status-website:
+  name: Atelier Status
+  # Swap to `cname: status.bookwithatelier.com` once the DNS record exists.
+  baseUrl: /atelier-status
+  introTitle: "Live and historical status for the Atelier booking platform."
+  introMessage: >
+    Checks run from GitHub's infrastructure every five minutes, independently
+    of the servers they are watching. Each site is checked at its origin
+    rather than at the CDN edge, so a cached page cannot make an outage look
+    like uptime.
+  navbar:
+    - title: Status
+      href: /
+    - title: GitHub
+      href: https://github.com/$OWNER/$REPO
+
+# GitHub `schedule:` is best-effort and queues under load — five minutes is
+# the nominal interval and 15 is a routine one. That latency is accepted here
+# and covered by the Cloudflare Worker, which checks every minute. The two
+# run on different clouds on purpose: this one keeps working when Cloudflare
+# is the thing that is broken, and the Worker keeps working when GitHub is.
+workflowSchedule:
+  uptime: "*/5 * * * *"
+  responseTime: "0 23 * * *"
+  graphs: "0 0 * * *"
+  staticSite: "0 1 * * *"
+  summary: "0 0 * * *"
+  updates: "0 3 * * *"
+  updateTemplate: "0 0 * * 0"
+
+commitMessages:
+  commitAuthorName: Atelier Status Bot
+  commitAuthorEmail: nicholas@alipaz.net

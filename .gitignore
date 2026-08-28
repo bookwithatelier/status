@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+*.log
+
+# Belt and braces. Nothing that could hold the unlisted target list should be
+# committable to a public repository by accident.
+private-targets*.json

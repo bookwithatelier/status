@@ -1,0 +1,16 @@
+{
+  "name": "atelier-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minute-level outage detection for the Atelier platform, on Cloudflare Workers.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "node --test 'test/*.test.js'"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

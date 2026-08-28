@@ -1,0 +1,57 @@
+name = "atelier-monitor"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# One trigger, every minute. The per-tier intervals (1 / 5 / 15 minutes) are
+# decided in src/targets.js from the minute of the hour, rather than by three
+# cron expressions, so that adding a tier is a data change instead of a
+# deployment-config change — and so the free plan's cron-trigger allowance is
+# not something to think about.
+#
+# Cron triggers are an ACCOUNT-level Workers feature and work on the free
+# Workers plan. The bwa zone's Business plan confers nothing here; do not
+# assume it does.
+[triggers]
+crons = ["* * * * *"]
+
+# Between-tick memory. See src/state.js for why this is written so rarely:
+# Workers KV on the free plan allows 1,000 writes a day and this Worker wakes
+# 1,440 times, so the state is deliberately shaped to change only on
+# transitions.
+#
+# Create it once, then paste the id here:
+#   npx wrangler kv namespace create STATE
+[[kv_namespaces]]
+binding = "STATE"
+id = "PASTE_KV_NAMESPACE_ID_HERE"
+
+[vars]
+# The private repo that receives outage issues. NOT this repository: an alert
+# names the site, and most of the monitored sites are prospect pitch sites for
+# businesses that have not agreed to anything.
+ALERT_ISSUE_REPO = "nalipaz/timberlodgeparlor"
+
+# ---------------------------------------------------------------------------
+# Secrets — set with `npx wrangler secret put <NAME>`, never in this file.
+# This repository is public.
+#
+#   PRIVATE_TARGETS     JSON array of the unlisted targets. Generate it with
+#                       scripts/sync-private-targets.sh, which reads them from
+#                       the production box and pipes them straight in.
+#   MONITOR_TOKEN       Shared value sent as X-Atelier-Monitor, matched by a
+#                       Cloudflare WAF skip rule so these checks are not bot-
+#                       challenged. Not authentication — /health.php is
+#                       unauthenticated by design and discloses nothing.
+#   TWILIO_ACCOUNT_SID  Twilio REST credentials, used directly. Deliberately
+#   TWILIO_AUTH_TOKEN   not the platform's SMS gateway: that runs on the box
+#   TWILIO_FROM         this Worker is watching.
+#   ALERT_SMS_TO        Platform operations' mobile. NOT the shop line, and
+#                       never a tenant's number.
+#   GITHUB_PAT          Fine-grained PAT with Issues: read/write on
+#                       ALERT_ISSUE_REPO. Nothing else.
+#   DASHBOARD_TOKEN     Bearer token for the debug endpoint, which exposes the
+#                       private target list and is 404 without it.
+# ---------------------------------------------------------------------------
+
+[observability]
+enabled = true
