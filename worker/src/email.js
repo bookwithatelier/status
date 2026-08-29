@@ -81,7 +81,7 @@ export async function sendEmail(env, subject, body) {
  * rejects a message without them.
  */
 function mime(from, to, subject, body) {
-  const id = `${crypto.randomUUID()}@${from.split('@')[1] || 'bookwithatelier.com'}`;
+  const id = `${crypto.randomUUID()}@${from.split('@')[1] || 'atelierbooking.co'}`;
   return [
     `From: Atelier Monitor <${from}>`,
     `To: <${to}>`,

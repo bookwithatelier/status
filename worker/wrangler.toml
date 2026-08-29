@@ -33,14 +33,33 @@ id = "fcae39d0bd5a457096d22038050c698a"
 # already verified as Email Routing destinations on this account, so an
 # unrestricted binding still cannot be used as an open relay.
 #
-# Requires Email Routing enabled on the bookwithatelier.com zone, with the
+# Deliberately on atelierbooking.co, NOT bookwithatelier.com. Three reasons,
+# and the first is the one that would have caused an incident:
+#
+#  1. Enabling Cloudflare Email Routing REPLACES a zone's MX records.
+#     bookwithatelier.com carries live iCloud MX and receives real mail, so
+#     turning it on there would have broken inbound mail to the domain.
+#     atelierbooking.co has no MX and no SPF — nothing to break.
+#  2. SPF isolation. bookwithatelier.com's SPF is tuned for the platform's
+#     outbound mail; adding a sender to it risks the ten-lookup limit, and an
+#     SPF permerror there would break TENANT email, not just alerts. A
+#     monitoring feature must not be able to do that.
+#  3. Reputation isolation. The platform's domain sends tenant notifications
+#     in volume. A complaint spike or a provider suspension against that
+#     domain must not also silence the alert that tells you about it.
+#
+# Both zones are on the same Cloudflare account, so this isolates DNS churn
+# and mail reputation — not a Cloudflare account or provider failure. That
+# case is covered by Upptime, which runs on GitHub.
+#
+# Requires Email Routing enabled on the atelierbooking.co zone, with the
 # recipient verified under Email → Email Routing → Destination addresses.
 [[send_email]]
 name = "ALERT_EMAIL"
 
 [vars]
-# Sender. A role address on our own domain; the zone needs Email Routing on.
-ALERT_EMAIL_FROM = "alerts@bookwithatelier.com"
+# Sender. A role address on the isolated zone; see the note above.
+ALERT_EMAIL_FROM = "alerts@atelierbooking.co"
 
 # The private repo that receives outage issues. NOT this repository: an alert
 # names the site, and most of the monitored sites are prospect pitch sites for
