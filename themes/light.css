@@ -1,26 +1,49 @@
+/*
+ * Atelier status page — light theme.
+ *
+ * Tokens lifted from the Book with Atelier marketing theme
+ * (web/themes/custom/atelier_marketing/css/variables.css in the platform
+ * repo): navy #14193a, warm gold #b5873a, bone #ede9e2, ink #2a2d3a.
+ *
+ * These files land here by being in assets/ at the repo root — the Upptime
+ * site build copies assets/* over the generated output as its last step, so
+ * a same-named file replaces the package's. That is the supported hook; do
+ * not edit the built gh-pages branch, it is regenerated on every run.
+ *
+ * One deliberate departure from the brand palette: the up/down colours stay
+ * unmistakably green and red. A status page is read at a glance by someone
+ * who is worried, and brand harmony is worth nothing next to instantly
+ * legible state. Gold earns its place as DEGRADED, where it happens to be
+ * both on-brand and exactly the right semantic.
+ */
 :root {
-  --body-background-color: #f0f7f7;
-  --body-text-color: #002626;
+  --body-background-color: #ede9e2;   /* bone */
+  --body-text-color: #2a2d3a;         /* ink */
   --card-background-color: #ffffff;
   --nav-background-color: #ffffff;
-  --nav-border-bottom-color: #d8e8e4;
-  --nav-current-border-bottom-color: #1abc9c;
-  --card-border-color: #d8e8e4;
-  --down-border-left-color: #eb3b5a;
-  --down-background-color: #ffd0d2;
-  --degraded-border-left-color: #f7b731;
-  --up-border-left-color: #20bf6b;
+  --nav-border-bottom-color: #dcd6cc; /* line */
+  --nav-current-border-bottom-color: #b5873a;
+  --card-border-color: #dcd6cc;
+
+  --up-border-left-color: #1f8a5f;
+  --degraded-border-left-color: #b5873a;
+  --down-border-left-color: #b3261e;
+  --down-background-color: #f7d9d6;
+
   --tag-color: #ffffff;
-  --tag-up-background-color: #20bf6b;
-  --tag-down-background-color: #eb3b5a;
-  --tag-degraded-background-color: #f7b731;
-  --change-background-color: #f7b731;
-  --error-button-border-color: #1a46ad;
-  --error-button-background-color: #3867d6;
-  --error-button-color: #ffffff;
-  --submit-button-border-color: #1a46ad;
-  --submit-button-background-color: #3867d6;
+  --tag-up-background-color: #1f8a5f;
+  --tag-degraded-background-color: #b5873a;
+  --tag-down-background-color: #b3261e;
+
+  --change-background-color: #b5873a;
+
+  --submit-button-border-color: #11152f;
+  --submit-button-background-color: #14193a;
   --submit-button-color: #ffffff;
+  --error-button-border-color: #11152f;
+  --error-button-background-color: #14193a;
+  --error-button-color: #ffffff;
+
   --graph-opacity: 1;
   --graph-filter: none;
 }

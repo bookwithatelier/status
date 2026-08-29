@@ -201,3 +201,48 @@ article .graph {
   opacity: var(--graph-opacity);
   filter: var(--graph-filter);
 }
+
+/* ===========================================================================
+ * Book with Atelier brand layer.
+ *
+ * Everything above this line is @upptime/status-page's own global.css, copied
+ * verbatim. It is here because assets/ overwrites by filename — shipping only
+ * the overrides would replace the package's base layout with nothing and the
+ * page would lose its structure entirely.
+ *
+ * When bumping the Upptime template, re-copy the upstream file and re-append
+ * this block rather than merging by hand.
+ * ======================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap');
+
+body {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter,
+    Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.55;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 1.75em;
+}
+
+/* Softer corners and the marketing site's shadow, so a card here reads like a
+ * card there. The upstream 0.2rem radius is much sharper than the brand's. */
+article {
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(20, 25, 58, 0.06);
+}
+
+/* The intro paragraph is the one piece of prose on the page; give it the
+ * marketing lead treatment rather than leaving it at body weight. */
+.lead {
+  font-size: 1.05em;
+  opacity: 0.85;
+}
