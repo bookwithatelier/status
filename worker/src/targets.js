@@ -59,18 +59,27 @@ export const PUBLIC_TARGETS = [
  * for prospects. Long enough that a multi-hour outage does not turn into a
  * pager loop, short enough that it cannot be forgotten.
  *
- * SMS is reserved for the one real tenant going hard down. Everything else is
- * an issue in the private repo, which GitHub turns into an email. Nothing here
- * ever reaches a tenant: outage alerts go to platform operations, and telling
- * a tenant about an outage is a platform-ops decision made by a human through
- * official channels.
+ * Channels, quietest to loudest:
+ *   issue     always. A durable record in the PRIVATE repo, which GitHub also
+ *             turns into a notification email.
+ *   email     sent by the Worker itself, independent of GitHub. The primary
+ *             alert while there is no SMS number.
+ *   sms       the one real tenant, hard down only. DORMANT until the BWA
+ *             Twilio number clears A2P registration — the platform must not
+ *             send ops alerts from a tenant's customer-facing bot number,
+ *             which is registered to that tenant's campaign and shares a
+ *             failure domain with the system being watched.
+ *
+ * Nothing here ever reaches a tenant: outage alerts go to platform
+ * operations, and telling a tenant about an outage is a platform-ops decision
+ * made by a human through official channels.
  */
 export const TIERS = {
   tenant: {
     everyMinutes: 1,
     failAfter: 90,
     degradedAfter: 900,
-    channels: { fail: ['sms', 'issue'], degraded: ['issue'] },
+    channels: { fail: ['sms', 'email', 'issue'], degraded: ['email', 'issue'] },
     renotifySeconds: 3600,
     listed: true,
   },
@@ -78,7 +87,7 @@ export const TIERS = {
     everyMinutes: 5,
     failAfter: 600,
     degradedAfter: 1800,
-    channels: { fail: ['issue'], degraded: ['issue'] },
+    channels: { fail: ['email', 'issue'], degraded: ['issue'] },
     renotifySeconds: 10800,
     listed: true,
   },

@@ -31,6 +31,7 @@ import { probe } from './probe.js';
 import { loadState, saveState, reconcile } from './state.js';
 import { vendorStatuses, vendorSummary } from './vendors.js';
 import { fileIssue, issueBody, sendSms, smsBody } from './alerts.js';
+import { sendEmail } from './email.js';
 
 export default {
   /**
@@ -152,19 +153,28 @@ async function dispatch(env, target, tier, result, alert, vendors) {
   const channels = tier.channels[severity] || [];
   const vendorLine = vendorSummary(vendors);
 
+  const headline =
+    alert.kind === 'recovered'
+      ? `Recovered: ${target.name}`
+      : alert.kind === 'degraded'
+        ? `Degraded: ${target.name}`
+        : `Outage: ${target.name}`;
+
   if (channels.includes('sms')) {
     await sendSms(env, smsBody(target, result, alert, vendorLine));
   }
 
+  if (channels.includes('email')) {
+    // The same body the issue carries. An operator reading the email should
+    // never have to go and open the issue to find out what broke.
+    await sendEmail(env, headline, issueBody(target, result, alert, vendors));
+  }
+
   if (channels.includes('issue')) {
-    const title =
-      alert.kind === 'degraded'
-        ? `Degraded: ${target.name}`
-        : `Outage: ${target.name}`;
     await fileIssue(
       env,
       target,
-      title,
+      alert.kind === 'recovered' ? `Outage: ${target.name}` : headline,
       issueBody(target, result, alert, vendors),
       alert.kind === 'recovered'
     );
