@@ -102,9 +102,11 @@ assignees:
 status-website:
   name: Atelier Status
   cname: status.bookwithatelier.com
-  # The Atelier mark, shipped via assets/ (copied over the build output).
-  # Replaces the Upptime icon that would otherwise be the favicon.
-  logoUrl: /logo-mark.svg
+  # NOTE: logoUrl is deliberately unset. A relative value was the only change
+  # that reaches the site build (assets/ is copied AFTER export, so the CSS
+  # cannot affect it), and the build died silently right after bundling with
+  # it in place. Re-add as an ABSOLUTE https URL once the certificate is
+  # issued, and watch the build.
   introTitle: "Live and historical status for the Atelier booking platform."
   introMessage: >
     Checks run from GitHub's infrastructure every five minutes, independently
