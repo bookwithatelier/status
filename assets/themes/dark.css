@@ -1,0 +1,39 @@
+/*
+ * Atelier status page — dark theme. See light.css for where these come from.
+ *
+ * Built on the marketing hero's navy stack rather than a neutral grey, so the
+ * dark page reads as the same product as the light one: near-black navy
+ * ground, navy cards, bone text, the brighter gold the brand uses on dark
+ * surfaces.
+ */
+:root {
+  --body-background-color: #11152f;   /* navy-3, hero bottom */
+  --body-text-color: #ede9e2;         /* bone */
+  --card-background-color: #14193a;   /* navy */
+  --nav-background-color: #14193a;
+  --nav-border-bottom-color: rgba(255, 255, 255, 0.13);
+  --nav-current-border-bottom-color: #caa052;   /* gold-2, for dark surfaces */
+  --card-border-color: rgba(255, 255, 255, 0.13);
+
+  --up-border-left-color: #3ecf8e;
+  --degraded-border-left-color: #caa052;
+  --down-border-left-color: #ff6b6b;
+  --down-background-color: #4a1418;
+
+  --tag-color: #11152f;
+  --tag-up-background-color: #3ecf8e;
+  --tag-degraded-background-color: #caa052;
+  --tag-down-background-color: #ff6b6b;
+
+  --change-background-color: #caa052;
+
+  --submit-button-border-color: #caa052;
+  --submit-button-background-color: #caa052;
+  --submit-button-color: #11152f;
+  --error-button-border-color: #caa052;
+  --error-button-background-color: #caa052;
+  --error-button-color: #11152f;
+
+  --graph-opacity: 0.9;
+  --graph-filter: none;
+}
