@@ -102,11 +102,16 @@ assignees:
 status-website:
   name: Atelier Status
   cname: status.bookwithatelier.com
-  # NOTE: logoUrl is deliberately unset. A relative value was the only change
-  # that reaches the site build (assets/ is copied AFTER export, so the CSS
-  # cannot affect it), and the build died silently right after bundling with
-  # it in place. Re-add as an ABSOLUTE https URL once the certificate is
-  # issued, and watch the build.
+  # ABSOLUTE, and it has to stay that way. A relative "/logo-mark.svg" is
+  # treated by sapper's export crawler as an internal route, so it writes
+  # export/logo-mark.svg as a DIRECTORY — which then collides with the
+  # assets/ copy and kills the build with
+  #   cp: could not write to dest file (code=EISDIR)
+  # reported only as a check annotation, never in the job log.
+  #
+  # raw.githubusercontent rather than our own domain, so the favicon does not
+  # depend on the Pages certificate being issued.
+  logoUrl: https://raw.githubusercontent.com/bookwithatelier/status/main/assets/logo-mark.svg
   introTitle: "Live and historical status for the Atelier booking platform."
   introMessage: >
     Checks run from GitHub's infrastructure every five minutes, independently
