@@ -1,12 +1,40 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="84 4 112 120" fill="none" role="img" aria-label="Atelier">
   <!--
-    Atelier A-mark only (no wordmark) — light surfaces.
-    Same geometry as logo.svg: apex (140,10), feet (90,118)/(190,118),
-    gold slot bar at y=62 with ticks. Cropped to the glyph.
+    Atelier A-mark, theme-aware.
+
+    The platform ships two separate files for this — logo-mark.svg (navy legs,
+    for light surfaces) and logo-mark-dark.svg (bone legs, for dark ones) —
+    and picks between them in CSS. That does not work here: Upptime's nav
+    renders the mark as a plain <img src={logoUrl}>, one URL, no way to swap
+    per theme. Shipping the light file alone put a navy mark on the navy dark
+    nav, where it was invisible.
+
+    So the two variants are merged into one file and chosen by a media query
+    inside the SVG. An <img>-loaded SVG is rendered with the viewer's own
+    colour-scheme preference, and Upptime's themes are selected by that same
+    `prefers-color-scheme` query, so the mark and the page can never disagree.
+
+    Colours are the marketing theme's: navy #14193a / gold #b5873a on light,
+    bone #ede9e2 / brighter gold #c9a84c on dark. Geometry is untouched from
+    logo-mark.svg — apex (140,10), feet (90,118)/(190,118), gold slot bar at
+    y=62 with ticks.
+
+    The light values are the plain attribute defaults, so anything that
+    ignores the media query — some favicon renderers still do — falls back to
+    the mark as it appears on the marketing site rather than to nothing.
   -->
-  <line x1="140" y1="10" x2="90"  y2="118" stroke="#14193a" stroke-width="8.5" stroke-linecap="round"/>
-  <line x1="140" y1="10" x2="190" y2="118" stroke="#14193a" stroke-width="8.5" stroke-linecap="round"/>
-  <line x1="100" y1="62" x2="180" y2="62"  stroke="#b5873a" stroke-width="5.5" stroke-linecap="round"/>
-  <line x1="100" y1="52" x2="100" y2="62"  stroke="#b5873a" stroke-width="2.5" stroke-linecap="round"/>
-  <line x1="180" y1="52" x2="180" y2="62"  stroke="#b5873a" stroke-width="2.5" stroke-linecap="round"/>
+  <style>
+    .leg { stroke: #14193a; }
+    .bar { stroke: #b5873a; }
+    @media (prefers-color-scheme: dark) {
+      .leg { stroke: #ede9e2; }
+      .bar { stroke: #c9a84c; }
+    }
+  </style>
+
+  <line class="leg" x1="140" y1="10" x2="90"  y2="118" stroke="#14193a" stroke-width="8.5" stroke-linecap="round"/>
+  <line class="leg" x1="140" y1="10" x2="190" y2="118" stroke="#14193a" stroke-width="8.5" stroke-linecap="round"/>
+  <line class="bar" x1="100" y1="62" x2="180" y2="62"  stroke="#b5873a" stroke-width="5.5" stroke-linecap="round"/>
+  <line class="bar" x1="100" y1="52" x2="100" y2="62"  stroke="#b5873a" stroke-width="2.5" stroke-linecap="round"/>
+  <line class="bar" x1="180" y1="52" x2="180" y2="62"  stroke="#b5873a" stroke-width="2.5" stroke-linecap="round"/>
 </svg>
