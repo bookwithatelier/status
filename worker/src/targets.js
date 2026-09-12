@@ -3,11 +3,11 @@
  *
  * THE PUBLIC/PRIVATE SPLIT
  * ------------------------
- * Atelier runs ~32 sites and has exactly ONE real tenant. The rest are
- * unsolicited prospect pitch sites, built for businesses that have not agreed
- * to anything and mostly do not know the site exists. This repository is
- * public, so their hostnames cannot live in it — not in a config file, not in
- * a comment, not in git history.
+ * Atelier runs ~32 sites, and almost all of them are per-customer builds on
+ * hostnames that identify the customer. This repository is public, so those
+ * hostnames cannot live in it — not in a config file, not in a comment, not
+ * in git history. For most of these sites, a hostname in a public repo would
+ * be the first the business heard of it.
  *
  * Only platform surfaces and real tenants are hard-coded below. Everything
  * else arrives at runtime in the PRIVATE_TARGETS secret, a JSON array set with

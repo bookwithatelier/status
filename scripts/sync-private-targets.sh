@@ -2,11 +2,10 @@
 # =============================================================================
 # sync-private-targets.sh — build the Worker's unlisted target list from prod.
 #
-# Atelier runs ~32 sites and has exactly ONE real tenant. The rest are
-# unsolicited prospect pitch sites for businesses that have not agreed to
-# anything, and this repository is PUBLIC. So that list never lands in a file
-# here: it is read off the production box, reviewed by a human, and pushed
-# straight into a Cloudflare Worker secret.
+# Almost every site Atelier runs is a per-customer build on a hostname that
+# identifies the customer, and this repository is PUBLIC. So that list never
+# lands in a file here: it is read off the production box, reviewed by a
+# human, and pushed straight into a Cloudflare Worker secret.
 #
 # A secret is not in the repository, not in git history, and not in the
 # deployment bundle a reader can inspect.

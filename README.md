@@ -91,7 +91,7 @@ Four rows, and only two of them name anything:
 | Book With Atelier  | `bookwithatelier.com/health.php`                        |
 | Atelier Studio     | `studio.bookwithatelier.com/health.php`                 |
 | **Tenant sites**   | `?scope=tenant` — every tenant at once, by category     |
-| **Prospect sites** | `?scope=prospect` — every prospect at once, by category |
+| **Preview sites**  | `?scope=prospect` — every preview site at once, by category |
 
 **No customer site is named anywhere in this repository.** See the next
 section.
@@ -117,10 +117,11 @@ reason as everything else: an alert names the site.
 
 ## The constraint that shapes everything: do not publish the site list
 
-The platform runs about 32 sites and has **one** real tenant. The rest are
-unsolicited **prospect pitch sites** — built for local businesses that have not
-agreed to anything and in most cases do not know the site exists. This
-repository is public, because GitHub Pages on the free tier requires it.
+Most of what this monitors is per-customer builds on customer-specific
+hostnames, and a public monitoring repository is not where any of those should
+first appear. This repository is public because GitHub Pages on the free tier
+requires it, so the rule has to hold in the repository itself rather than in
+its settings.
 
 So the split is:
 
@@ -231,14 +232,14 @@ gitignored like everything else in `env/`; the private repo ships
 `env.monitor-scopes.example.txt` as a starting point.
 
 ```
-/var/www/html/atelier/env/_monitor-scopes.txt
+<atelier checkout>/env/_monitor-scopes.txt
 
   bookwithatelier.com          platform
   studio.bookwithatelier.com   platform
   demoweb                      platform
   demo.bookwithatelier.com     platform
   timberlodgeparlor.com        tenant
-  # anything unlisted is a prospect
+  # anything unlisted joins the preview tier
 ```
 
 Two things about that default. It is the safe direction — a newly provisioned

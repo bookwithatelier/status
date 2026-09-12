@@ -17,8 +17,8 @@
  * an alert to be lost, and they are three different companies.
  *
  * Issues go to the private repo rather than to this public one because an
- * alert names the site — and most of the sites are prospect pitch sites for
- * businesses that have not agreed to anything. Upptime already publishes
+ * alert names the site, and almost every monitored site is a per-customer
+ * build on a hostname that identifies the customer. Upptime already publishes
  * issues for the three public surfaces; this channel must stay private.
  */
 

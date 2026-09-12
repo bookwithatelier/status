@@ -255,6 +255,6 @@ test('a prospect with a merely stale cron files nothing', async () => {
   assert.equal(
     calls.filter((c) => c.url.includes('api.github.com')).length,
     0,
-    'a slow tick on a prospect pitch site is still nobody\'s emergency'
+    'a slow tick on a preview site is still nobody\'s emergency'
   );
 });

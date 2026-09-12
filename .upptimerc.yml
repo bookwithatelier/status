@@ -6,12 +6,12 @@
 # means every URL in this file is crawlable, diffable through git history, and
 # listed by name on the status page.
 #
-# Atelier runs ~32 sites but has exactly ONE real tenant. The rest are
-# unsolicited prospect pitch sites, built for businesses that have not agreed
-# to anything and in most cases do not know the site exists. Publishing that
-# list would be a disclosure, not a status page.
+# Almost all of those ~32 sites are per-customer builds on hostnames that
+# identify the customer. A hostname here is published to anyone who loads the
+# status page, and for most of these that would be the first the business
+# heard of it. Publishing the list would be a disclosure, not a status page.
 #
-# So NO customer site is named here at all — not tenants, not prospects. They
+# So NO customer site is named here at all — not tenants, not previews. They
 # are reported by CATEGORY through the `?scope=` aggregate, which answers
 # 200/503 for a whole group and returns counts rather than hostnames. Only the
 # platform's own surfaces are named, because they are ours.
@@ -86,7 +86,14 @@ sites:
     maxResponseTime: 15000
     maxRetries: 2
 
-  - name: Prospect sites
+  # "Preview sites" rather than the internal scope name. The scope identifier
+  # stays `prospect` everywhere it is a technical key — the URL below, the
+  # tiers in worker/src/targets.js, env/_monitor-scopes.txt on the box — but
+  # this string is rendered on a public status page that customers and the
+  # businesses behind these very sites are invited to read, and "prospect"
+  # tells a reader what we think they are. Preview is accurate and says
+  # nothing about the commercial relationship.
+  - name: Preview sites
     url: https://bookwithatelier.com/health.php?scope=prospect
     headers:
       - "X-Atelier-Monitor: $MONITOR_TOKEN"
