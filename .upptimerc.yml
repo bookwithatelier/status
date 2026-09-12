@@ -112,11 +112,13 @@ status-website:
   # raw.githubusercontent rather than our own domain, so the favicon does not
   # depend on the Pages certificate being issued.
   #
-  # HEAD, not a branch name. raw.githubusercontent does not follow GitHub's
-  # branch-rename redirects, so a hardcoded branch here turns into a 404 the
-  # moment the default branch is renamed — which is exactly what happened on
-  # the way to master. HEAD tracks whatever the default branch is called; the
-  # README's own badge URLs already use it.
+  # HEAD, not a branch name. Measured after the main -> master rename:
+  # raw.githubusercontent DOES follow GitHub's rename redirect, so the old
+  # /main/ path still answers 200. That redirect is undocumented behaviour
+  # that disappears the day someone recreates a branch by the old name, and
+  # it is not something a favicon should quietly depend on. HEAD resolves to
+  # whatever the default branch is called, unconditionally — which is what
+  # the README's own badge URLs already do.
   logoUrl: https://raw.githubusercontent.com/bookwithatelier/status/HEAD/assets/logo-mark.svg
   introTitle: "Live and historical status for the Atelier booking platform."
   introMessage: >
