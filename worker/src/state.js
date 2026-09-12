@@ -24,9 +24,16 @@
  *     since: <epoch seconds the CURRENT status began>,
  *     alertedAt: <epoch seconds we last said something, or 0>,
  *     code: <last HTTP code>,
- *     reasons: [ ... ]
+ *     reasons: [ ... ],
+ *     escalated: <true while a degraded verdict is being dispatched at fail
+ *                 severity — see ESCALATING_REASONS. Remembered rather than
+ *                 recomputed because the all-clear has to go down the same
+ *                 channels the alarm did, and by then the reason that caused
+ *                 the escalation is gone.>
  *   }
  */
+
+import { escalates } from './targets.js';
 
 const KEY = 'monitor-state-v1';
 
@@ -57,13 +64,27 @@ export async function saveState(env, state) {
  * @returns {{
  *   entry: object,
  *   changed: boolean,
- *   alert: null | {kind: 'down'|'degraded'|'recovered'|'still-down', forSeconds: number}
+ *   alert: null | {kind: 'down'|'degraded'|'recovered'|'still-down',
+ *                  severity: 'fail'|'degraded', forSeconds: number}
  * }}
+ *
+ * `severity` is which set of channels the alert takes, and it is NOT always
+ * derivable from `kind`: an escalating reason (ESCALATING_REASONS) sends a
+ * degraded verdict down the fail channels without pretending the site is
+ * down. Decided here, where the state that a recovery has to match against
+ * lives, rather than re-derived at dispatch.
  */
 export function reconcile(previous, result, tier, now) {
   const before = previous || { status: 'ok', since: now, alertedAt: 0 };
   const status = result.status;
   const transitioned = before.status !== status;
+
+  // A degraded verdict carrying an escalating reason is dispatched as though
+  // it were a failure: fail channels, fail debounce, fail renotify clock. The
+  // status itself stays degraded everywhere it is reported, because the site
+  // really is still serving — this only decides how loud we are about it.
+  const escalated = escalates(status, result.reasons);
+  const severity = status === 'fail' || escalated ? 'fail' : 'degraded';
 
   const entry = {
     status,
@@ -71,6 +92,7 @@ export function reconcile(previous, result, tier, now) {
     alertedAt: transitioned ? 0 : before.alertedAt || 0,
     code: result.code,
     reasons: result.reasons,
+    escalated,
   };
 
   const forSeconds = now - entry.since;
@@ -87,18 +109,29 @@ export function reconcile(previous, result, tier, now) {
         // tenant recovering from *degraded* would send an SMS, because
         // recovery would be classified as a fail-tier event — an all-clear
         // louder than the alarm it answers.
-        alert: { kind: 'recovered', from: before.status, forSeconds: now - before.since },
+        alert: {
+          kind: 'recovered',
+          from: before.status,
+          // What the ALARM went out as, not what the verdict was. A prospect
+          // whose dead cron opened an issue recovers from `degraded`, and
+          // routing the all-clear by status alone would send it to the empty
+          // degraded channel list — leaving the issue open forever.
+          severity: before.status === 'fail' || before.escalated ? 'fail' : 'degraded',
+          forSeconds: now - before.since,
+        },
       };
     }
     return { entry, changed: transitioned || stale(before, entry), alert: null };
   }
 
-  const threshold = status === 'fail' ? tier.failAfter : tier.degradedAfter;
+  const threshold = severity === 'fail' ? tier.failAfter : tier.degradedAfter;
 
   // A tier can opt out of a severity entirely — prospects have no degraded
   // channel, because nobody is going to act at 3am on a stale cron for a site
-  // whose owner does not know it exists.
-  if (!threshold || !(tier.channels[status === 'fail' ? 'fail' : 'degraded'] || []).length) {
+  // whose owner does not know it exists. An escalating reason is exactly the
+  // case where that reasoning stops holding, and it arrives here as severity
+  // 'fail', so it reads the tier's fail policy instead.
+  if (!threshold || !(tier.channels[severity] || []).length) {
     return { entry, changed: transitioned || stale(before, entry), alert: null };
   }
 
@@ -119,7 +152,11 @@ export function reconcile(previous, result, tier, now) {
       entry,
       changed: true,
       alert: {
+        // `kind` describes the site, `severity` describes the volume. An
+        // escalated degraded is still reported as degraded — calling a
+        // serving site an outage is how a monitor loses its audience.
         kind: firstTime ? (status === 'fail' ? 'down' : 'degraded') : 'still-down',
+        severity,
         forSeconds,
       },
     };

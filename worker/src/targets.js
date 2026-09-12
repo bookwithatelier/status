@@ -102,6 +102,40 @@ export const TIERS = {
 };
 
 /**
+ * Degraded reasons that are not allowed to stay quiet.
+ *
+ * `degraded` normally means "serving customers, something behind it is late",
+ * and prospects have no degraded channel at all because nobody is going to act
+ * at 3am on a slow cron tick for a site whose owner does not know it exists.
+ * That is the right default and it stays the default.
+ *
+ * A few reasons break the assumption the default rests on. They are emitted
+ * only once "late" has been ruled out — the site is not slow, the thing is not
+ * running — and they precede a real outage rather than accompanying one. A
+ * reason listed here is dispatched at fail severity: same channels, same
+ * debounce, same renotify clock. The verdict itself is untouched, so the
+ * status page still reports the site as degraded, because it is.
+ *
+ * `cron_dead` earned its place on 2026-09-11. Twenty-four sites reported
+ * `cron_stale` for twelve hours while every cron run fataled on a poisoned
+ * container, and because prospects are silent on degraded, nobody was told
+ * until their front doors began returning 500 the following morning. The
+ * probe now separates late from stopped (atelier_health CronProbe); this is
+ * the half that acts on it.
+ *
+ * Keep this list short. Every entry is a promise that the reason is worth
+ * opening an issue for on a site nobody has asked us to build.
+ */
+export const ESCALATING_REASONS = new Set(['cron_dead']);
+
+/**
+ * Whether a verdict should be dispatched louder than its status suggests.
+ */
+export function escalates(status, reasons) {
+  return status === 'degraded' && (reasons || []).some((r) => ESCALATING_REASONS.has(r));
+}
+
+/**
  * Parses the PRIVATE_TARGETS secret.
  *
  * Anything malformed is dropped rather than thrown: a typo in one entry must

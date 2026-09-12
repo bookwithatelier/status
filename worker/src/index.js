@@ -143,21 +143,24 @@ export async function runChecks(env, nowMs = Date.now()) {
  * all-clear trains people to ignore the alert.
  */
 async function dispatch(env, target, tier, result, alert, vendors) {
-  // A recovery goes wherever its alarm went — an alert with no all-clear
-  // trains people to ignore the alert — so it is classified by the status it
-  // is recovering FROM, not by the fact that it is good news.
-  const severity =
-    alert.kind === 'recovered'
-      ? (alert.from === 'degraded' ? 'degraded' : 'fail')
-      : (alert.kind === 'degraded' ? 'degraded' : 'fail');
+  // reconcile() decided the severity and this trusts it. It used to be
+  // re-derived from `alert.kind` here, which was fine while kind and volume
+  // were the same thing and wrong the moment they stopped being: an escalating
+  // reason (ESCALATING_REASONS) sends kind 'degraded' down the fail channels,
+  // and a recovery has to follow whatever its alarm actually did — which only
+  // the stored state knows by then.
+  const severity = alert.severity || (alert.kind === 'degraded' ? 'degraded' : 'fail');
   const channels = tier.channels[severity] || [];
   const vendorLine = vendorSummary(vendors);
 
+  // An escalated degraded gets its own headline. "Degraded" is the word this
+  // fleet has 24 permanently-degraded prospects trained everyone to skim past,
+  // and "Outage" would be a lie about a site that is serving pages.
   const headline =
     alert.kind === 'recovered'
       ? `Recovered: ${target.name}`
       : alert.kind === 'degraded'
-        ? `Degraded: ${target.name}`
+        ? `${severity === 'fail' ? 'Degraded (escalated)' : 'Degraded'}: ${target.name}`
         : `Outage: ${target.name}`;
 
   if (channels.includes('sms')) {

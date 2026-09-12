@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { reconcile } from '../src/state.js';
-import { dueTargets, privateTargets, TIERS } from '../src/targets.js';
+import { dueTargets, escalates, privateTargets, TIERS } from '../src/targets.js';
 import { NORMALISERS, VENDORS, vendorSummary } from '../src/vendors.js';
 import { humanDuration, smsBody } from '../src/alerts.js';
 
@@ -31,11 +31,11 @@ const fail = (reasons = ['env_file_unreadable']) => ({
   frontDoor: 503,
 });
 const ok = () => ({ status: 'ok', code: 200, ms: 30, reasons: [], site: 'x', frontDoor: null });
-const degraded = () => ({
+const degraded = (reasons = ['cron_stale']) => ({
   status: 'degraded',
   code: 200,
   ms: 30,
-  reasons: ['cron_stale'],
+  reasons,
   site: 'x',
   frontDoor: null,
 });
@@ -118,6 +118,98 @@ test('a tier with no channel for a severity never alerts on it', () => {
     reconcile(stuck, degraded(), prospect, NOW).alert,
     null,
     'nobody is acting at 3am on a stale cron for a site whose owner does not know it exists'
+  );
+});
+
+/**
+ * The 2026-09-11 regression, as a test.
+ *
+ * Twenty-four prospect sites reported `cron_stale` for twelve hours while
+ * every cron run fataled on a poisoned container. Prospects are silent on
+ * degraded by design, so nobody was told until the front doors began
+ * returning 500 the next morning. `cron_dead` is the probe saying "this is
+ * not a slow tick"; these tests are the Worker acting on it.
+ */
+test('a dead cron on a prospect opens an issue, where a stale one stays silent', () => {
+  const prospect = TIERS.prospect;
+  const stuck = { status: 'degraded', since: NOW - 999999, alertedAt: 0, code: 200, reasons: [] };
+
+  assert.equal(
+    reconcile(stuck, degraded(['cron_stale']), prospect, NOW).alert,
+    null,
+    'late is still not worth waking anyone for'
+  );
+
+  const { alert, entry } = reconcile(stuck, degraded(['cron_stale', 'cron_dead']), prospect, NOW);
+  assert.equal(alert.severity, 'fail', 'it takes the fail channels — for prospects, the issue');
+  assert.equal(alert.kind, 'degraded', 'but it is not called an outage: the site is serving');
+  assert.equal(entry.escalated, true);
+  assert.deepEqual(prospect.channels[alert.severity], ['issue']);
+});
+
+test('an escalated alert uses the fail debounce, not the degraded one', () => {
+  const prospect = TIERS.prospect;
+  // Prospects have degradedAfter 0 — the escalation has to bring its own
+  // threshold or a single bad tick would file an issue.
+  const brief = { status: 'degraded', since: NOW - 60, alertedAt: 0, code: 200, reasons: [] };
+  assert.equal(
+    reconcile(brief, degraded(['cron_stale', 'cron_dead']), prospect, NOW).alert,
+    null,
+    'one minute of it is not yet worth an issue'
+  );
+
+  const sustained = { status: 'degraded', since: NOW - 3600, alertedAt: 0, code: 200, reasons: [] };
+  assert.ok(reconcile(sustained, degraded(['cron_stale', 'cron_dead']), prospect, NOW).alert);
+});
+
+/**
+ * The bug this design would have had. The escalation is driven by the reason
+ * list, and by the time the site recovers the reason is gone — so recovery
+ * has to read what the ALARM did, not what the verdict says. Routing an
+ * escalated prospect's all-clear by status alone sends it to the empty
+ * degraded channel list and the issue stays open forever.
+ */
+test('recovery from an escalated degraded closes the issue it opened', () => {
+  const prospect = TIERS.prospect;
+  const announced = {
+    status: 'degraded',
+    since: NOW - 99999,
+    alertedAt: NOW - 1000,
+    code: 200,
+    reasons: ['cron_stale', 'cron_dead'],
+    escalated: true,
+  };
+  const { alert } = reconcile(announced, ok(), prospect, NOW);
+  assert.equal(alert.kind, 'recovered');
+  assert.equal(alert.severity, 'fail', 'the all-clear follows the alarm');
+  assert.deepEqual(prospect.channels[alert.severity], ['issue']);
+});
+
+test('recovery from an ordinary degraded is still quiet for a prospect', () => {
+  const prospect = TIERS.prospect;
+  const announced = {
+    status: 'degraded',
+    since: NOW - 99999,
+    alertedAt: NOW - 1000,
+    code: 200,
+    reasons: ['cron_stale'],
+    escalated: false,
+  };
+  const { alert } = reconcile(announced, ok(), prospect, NOW);
+  assert.equal(alert.severity, 'degraded');
+  assert.deepEqual(prospect.channels[alert.severity], []);
+});
+
+test('escalation only ever applies to degraded, and only to listed reasons', () => {
+  assert.equal(escalates('degraded', ['cron_dead']), true);
+  assert.equal(escalates('degraded', ['cron_stale']), false);
+  assert.equal(escalates('degraded', []), false);
+  assert.equal(escalates('degraded', undefined), false);
+  assert.equal(escalates('ok', ['cron_dead']), false);
+  assert.equal(
+    escalates('fail', ['cron_dead']),
+    false,
+    'a failure is already at fail severity; escalating it would be a no-op with a confusing name'
   );
 });
 

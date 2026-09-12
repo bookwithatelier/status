@@ -168,3 +168,93 @@ test('a KV read failure does not stop the checks', async () => {
   const summary = await runChecks({ ...baseEnv(broken), STATE: broken }, MINUTE_3);
   assert.equal(summary.results[0].status, 'ok');
 });
+
+/**
+ * The whole chain for a dead cron on a prospect, end to end.
+ *
+ * Every part of this passes its own unit tests whether or not the issue is
+ * actually filed — the probe returns degraded, reconcile returns an alert,
+ * dispatch reads a channel list. The thing worth asserting is the POST to
+ * GitHub, because on 2026-09-11 the equivalent path stayed quiet for twelve
+ * hours and nothing anywhere logged a problem.
+ */
+test('a prospect whose cron has stopped ends up with a GitHub issue', async () => {
+  const kv = fakeKv();
+  const calls = stubFetch({
+    'skin.example/health.php': {
+      status: 200,
+      body: JSON.stringify({
+        status: 'degraded',
+        site: 'tc46a1ec169911c5e',
+        reasons: ['cron_stale', 'cron_dead'],
+      }),
+    },
+    'api.github.com/search/issues': { status: 200, body: JSON.stringify({ items: [] }) },
+    'api.github.com/repos': { status: 201, body: JSON.stringify({ number: 99 }) },
+  });
+
+  const env = {
+    ...baseEnv(kv),
+    ALERT_ISSUE_REPO: 'bookwithatelier/atelier',
+    GITHUB_PAT: 'pat',
+    PRIVATE_TARGETS: JSON.stringify([
+      { id: 'skin', name: 'Skin', url: 'https://skin.example', tier: 'prospect' },
+    ]),
+  };
+
+  // Already degraded for two hours, so the fail debounce (1800s) is satisfied
+  // — the same shape the real fleet was in all of 2026-09-11.
+  kv.store.set(
+    'monitor-state-v1',
+    JSON.stringify({
+      skin: { status: 'degraded', since: Math.floor(MINUTE_3 / 1000) - 7200, alertedAt: 0, code: 200, reasons: ['cron_stale'] },
+    })
+  );
+
+  await runChecks(env, MINUTE_3);
+
+  const opened = calls.find((c) => c.method === 'POST' && c.url.includes('/issues'));
+  assert.ok(opened, 'a stopped cron on a prospect must reach the issue channel');
+  const payload = JSON.parse(opened.body);
+  assert.match(payload.title, /Degraded \(escalated\): Skin/);
+  assert.match(payload.title, /\[monitor:skin\]/, 'the marker is how the recovery finds it again');
+  assert.match(payload.body, /cron_dead/, 'the body has to name what actually stopped');
+  assert.deepEqual(payload.labels, ['outage']);
+});
+
+/**
+ * The control: the same site with an ordinary stale cron stays silent, which
+ * is the behaviour 24 permanently-degraded prospects depend on.
+ */
+test('a prospect with a merely stale cron files nothing', async () => {
+  const kv = fakeKv();
+  const calls = stubFetch({
+    'skin.example/health.php': {
+      status: 200,
+      body: JSON.stringify({ status: 'degraded', site: 'tc46a1ec169911c5e', reasons: ['cron_stale'] }),
+    },
+  });
+
+  const env = {
+    ...baseEnv(kv),
+    ALERT_ISSUE_REPO: 'bookwithatelier/atelier',
+    GITHUB_PAT: 'pat',
+    PRIVATE_TARGETS: JSON.stringify([
+      { id: 'skin', name: 'Skin', url: 'https://skin.example', tier: 'prospect' },
+    ]),
+  };
+  kv.store.set(
+    'monitor-state-v1',
+    JSON.stringify({
+      skin: { status: 'degraded', since: Math.floor(MINUTE_3 / 1000) - 7200, alertedAt: 0, code: 200, reasons: ['cron_stale'] },
+    })
+  );
+
+  await runChecks(env, MINUTE_3);
+
+  assert.equal(
+    calls.filter((c) => c.url.includes('api.github.com')).length,
+    0,
+    'a slow tick on a prospect pitch site is still nobody\'s emergency'
+  );
+});
