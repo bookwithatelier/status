@@ -170,7 +170,7 @@ test('a KV read failure does not stop the checks', async () => {
 });
 
 /**
- * The whole chain for a dead cron on a prospect, end to end.
+ * The whole chain for a dead cron on a preview site, end to end.
  *
  * Every part of this passes its own unit tests whether or not the issue is
  * actually filed — the probe returns degraded, reconcile returns an alert,
@@ -178,7 +178,7 @@ test('a KV read failure does not stop the checks', async () => {
  * GitHub, because on 2026-09-11 the equivalent path stayed quiet for twelve
  * hours and nothing anywhere logged a problem.
  */
-test('a prospect whose cron has stopped ends up with a GitHub issue', async () => {
+test('a preview site whose cron has stopped ends up with a GitHub issue', async () => {
   const kv = fakeKv();
   const calls = stubFetch({
     'skin.example/health.php': {
@@ -198,7 +198,7 @@ test('a prospect whose cron has stopped ends up with a GitHub issue', async () =
     ALERT_ISSUE_REPO: 'bookwithatelier/atelier',
     GITHUB_PAT: 'pat',
     PRIVATE_TARGETS: JSON.stringify([
-      { id: 'skin', name: 'Skin', url: 'https://skin.example', tier: 'prospect' },
+      { id: 'skin', name: 'Skin', url: 'https://skin.example', tier: 'preview' },
     ]),
   };
 
@@ -214,7 +214,7 @@ test('a prospect whose cron has stopped ends up with a GitHub issue', async () =
   await runChecks(env, MINUTE_3);
 
   const opened = calls.find((c) => c.method === 'POST' && c.url.includes('/issues'));
-  assert.ok(opened, 'a stopped cron on a prospect must reach the issue channel');
+  assert.ok(opened, 'a stopped cron on a preview site must reach the issue channel');
   const payload = JSON.parse(opened.body);
   assert.match(payload.title, /Degraded \(escalated\): Skin/);
   assert.match(payload.title, /\[monitor:skin\]/, 'the marker is how the recovery finds it again');
@@ -224,9 +224,9 @@ test('a prospect whose cron has stopped ends up with a GitHub issue', async () =
 
 /**
  * The control: the same site with an ordinary stale cron stays silent, which
- * is the behaviour 24 permanently-degraded prospects depend on.
+ * is the behaviour 24 permanently-degraded preview sites depend on.
  */
-test('a prospect with a merely stale cron files nothing', async () => {
+test('a preview site with a merely stale cron files nothing', async () => {
   const kv = fakeKv();
   const calls = stubFetch({
     'skin.example/health.php': {
@@ -240,7 +240,7 @@ test('a prospect with a merely stale cron files nothing', async () => {
     ALERT_ISSUE_REPO: 'bookwithatelier/atelier',
     GITHUB_PAT: 'pat',
     PRIVATE_TARGETS: JSON.stringify([
-      { id: 'skin', name: 'Skin', url: 'https://skin.example', tier: 'prospect' },
+      { id: 'skin', name: 'Skin', url: 'https://skin.example', tier: 'preview' },
     ]),
   };
   kv.store.set(

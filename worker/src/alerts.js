@@ -4,7 +4,7 @@
  * TWO RULES, BOTH NON-NEGOTIABLE
  * ------------------------------
  * 1. Alerts go to PLATFORM OPERATIONS ONLY. Never to a tenant, never to a
- *    tenant's staff, never to a prospect. Telling a tenant their site is down
+ *    tenant's staff, never to a site's owner. Telling a tenant their site is down
  *    is a decision a person makes, through official channels, after they know
  *    what is actually happening.
  * 2. Nothing here may route through the platform's own notification stack.

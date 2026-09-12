@@ -56,7 +56,7 @@ export const PUBLIC_TARGETS = [
  *
  * `renotifySeconds` is how long a still-broken site waits before it is
  * mentioned again — an hour for the tenant, three for platform surfaces, a day
- * for prospects. Long enough that a multi-hour outage does not turn into a
+ * for preview sites. Long enough that a multi-hour outage does not turn into a
  * pager loop, short enough that it cannot be forgotten.
  *
  * Channels, quietest to loudest:
@@ -91,7 +91,7 @@ export const TIERS = {
     renotifySeconds: 10800,
     listed: true,
   },
-  prospect: {
+  preview: {
     everyMinutes: 15,
     failAfter: 1800,
     degradedAfter: 0,
@@ -102,12 +102,33 @@ export const TIERS = {
 };
 
 /**
+ * Old tier spellings, accepted on input and never emitted.
+ *
+ * `preview` was called `prospect` until 2026-09-12. The tier arrives in the
+ * PRIVATE_TARGETS secret, which is generated from the production box by
+ * scripts/sync-private-targets.sh and pushed by hand — so there is always a
+ * window where a deployed Worker and the secret disagree about the spelling.
+ * Without this the old name would fall through to the default tier, which
+ * happens to be the same tier today and would stop being so the moment the
+ * default changes. Cheap to keep, silent to lose.
+ */
+const TIER_ALIASES = { prospect: 'preview' };
+
+/**
+ * The canonical tier for a value from an untrusted source.
+ */
+export function canonicalTier(tier) {
+  const resolved = TIER_ALIASES[tier] || tier;
+  return TIERS[resolved] ? resolved : 'preview';
+}
+
+/**
  * Degraded reasons that are not allowed to stay quiet.
  *
  * `degraded` normally means "serving customers, something behind it is late",
- * and prospects have no degraded channel at all because nobody is going to act
- * at 3am on a slow cron tick for a site whose owner does not know it exists.
- * That is the right default and it stays the default.
+ * and the preview tier has no degraded channel at all because nobody is going
+ * to act at 3am on a slow cron tick for a site that is not live yet. That is
+ * the right default and it stays the default.
  *
  * A few reasons break the assumption the default rests on. They are emitted
  * only once "late" has been ruled out — the site is not slow, the thing is not
@@ -118,13 +139,13 @@ export const TIERS = {
  *
  * `cron_dead` earned its place on 2026-09-11. Twenty-four sites reported
  * `cron_stale` for twelve hours while every cron run fataled on a poisoned
- * container, and because prospects are silent on degraded, nobody was told
- * until their front doors began returning 500 the following morning. The
+ * container, and because the preview tier is silent on degraded, nobody was
+ * told until their front doors began returning 500 the following morning. The
  * probe now separates late from stopped (atelier_health CronProbe); this is
  * the half that acts on it.
  *
  * Keep this list short. Every entry is a promise that the reason is worth
- * opening an issue for on a site nobody has asked us to build.
+ * opening an issue for on a site that is not live yet.
  */
 export const ESCALATING_REASONS = new Set(['cron_dead']);
 
@@ -163,19 +184,19 @@ export function privateTargets(env) {
       id: t.id,
       name: t.name || t.id,
       url: t.url.replace(/\/+$/, ''),
-      tier: TIERS[t.tier] ? t.tier : 'prospect',
+      tier: canonicalTier(t.tier),
     }));
 }
 
 /**
  * The targets due for a check this minute.
  *
- * Prospects are spread across the interval rather than all fired at once —
+ * Preview sites are spread across the interval rather than all fired at once —
  * target i is checked when `i % everyMinutes === minute % everyMinutes`. Two
  * reasons, and the second is the one that bites:
  *
  *  - A Worker invocation on the free plan may make at most 50 subrequests.
- *    Thirty-odd prospects plus their fallback checks plus the vendor sweep
+ *    Thirty-odd preview sites plus their fallback checks plus the vendor sweep
  *    would blow through that in a single tick, and the failure would land on
  *    whichever targets happened to sort last.
  *  - Firing thirty requests at the same origin in the same second is itself a
@@ -186,7 +207,7 @@ export function privateTargets(env) {
  */
 export function dueTargets(all, minute) {
   return all.filter((target, index) => {
-    const tier = TIERS[target.tier] || TIERS.prospect;
+    const tier = TIERS[target.tier] || TIERS.preview;
     if (tier.everyMinutes <= 1) {
       return true;
     }

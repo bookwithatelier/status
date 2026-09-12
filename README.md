@@ -105,7 +105,7 @@ intervals are decided in `worker/src/targets.js`.
 | ------------------------ | -------- | --------------- | ------------------ |
 | `tenant` (TLP)           | 1 min    | **SMS** + issue | issue after 15 min |
 | `platform` (bwa, studio) | 5 min    | issue           | issue after 30 min |
-| `prospect`               | 15 min   | issue, unlisted | never              |
+| `preview`                | 15 min   | issue, unlisted | never              |
 
 SMS goes through the Twilio REST API **directly**, with the Worker's own
 credentials. It deliberately does not touch the platform's SMS gateway,
@@ -127,7 +127,7 @@ So the split is:
 
 - **Named publicly**: the platform's own surfaces — bookwithatelier.com and
   studio.bookwithatelier.com. They are ours.
-- **Reported by category**: every customer site, tenant and prospect alike, via
+- **Reported by category**: every customer site, tenant and preview alike, via
   `/health.php?scope=`. That endpoint aggregates a whole category into one
   200/503 and a body of counts and reason strings — no hostname, no site
   directory, nothing a reader could diff back into a membership list.
@@ -245,7 +245,7 @@ gitignored like everything else in `env/`; the private repo ships
 Two things about that default. It is the safe direction — a newly provisioned
 site nobody has classified must not silently join the tier that sends an SMS
 at 2am, nor silently appear as a tenant on a public page. And it means adding
-a prospect site needs no monitoring change at all: it is covered the moment it
+a preview site needs no monitoring change at all: it is covered the moment it
 exists.
 
 Retired tenants go in `env/_monitor-exclude.txt` (one directory per line)
@@ -283,7 +283,7 @@ header, the Worker as `X-Atelier-Monitor`.
 ### Alert recipients
 
 Outage alerts go to **platform operations only** — never to a tenant, never to
-a tenant's staff, never to a prospect. Telling a tenant their site is down is a
+a tenant's staff, never to a site's owner. Telling a tenant their site is down is a
 decision a person makes, through official channels, after they know what is
 actually happening.
 

@@ -47,7 +47,7 @@ export default {
    * A small read-only view of the current state, for debugging.
    *
    * Behind a bearer token, and that is not optional: the state map contains
-   * every prospect target's hostname, which is exactly the list this whole
+   * every unlisted target's hostname, which is exactly the list this whole
    * design exists to keep unpublished. With no token configured the endpoint
    * refuses rather than opening up.
    */
@@ -117,7 +117,7 @@ export async function runChecks(env, nowMs = Date.now()) {
   const summary = [];
 
   for (const { target, result } of results) {
-    const tier = TIERS[target.tier] || TIERS.prospect;
+    const tier = TIERS[target.tier] || TIERS.preview;
     const { entry, changed, alert } = reconcile(state[target.id], result, tier, now);
 
     state[target.id] = entry;

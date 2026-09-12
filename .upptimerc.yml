@@ -16,7 +16,7 @@
 # 200/503 for a whole group and returns counts rather than hostnames. Only the
 # platform's own surfaces are named, because they are ours.
 #
-# Per-site detail — which tenant, which prospect, what broke — lives in the
+# Per-site detail — which tenant, which preview site, what broke — lives in
 # Cloudflare Worker in worker/, which is private, and in the outage issues it
 # files in the private repo.
 #
@@ -86,13 +86,16 @@ sites:
     maxResponseTime: 15000
     maxRetries: 2
 
-  # "Preview sites" rather than the internal scope name. The scope identifier
-  # stays `prospect` everywhere it is a technical key — the URL below, the
-  # tiers in worker/src/targets.js, env/_monitor-scopes.txt on the box — but
-  # this string is rendered on a public status page that customers and the
-  # businesses behind these very sites are invited to read, and "prospect"
-  # tells a reader what we think they are. Preview is accurate and says
-  # nothing about the commercial relationship.
+  # The category was called "prospect" until 2026-09-12, in the row name AND
+  # in the ?scope= parameter below — a word describing our commercial intent
+  # toward the site's owner, in a URL on a page that owner is invited to read.
+  #
+  # The URL below is the LAST thing to flip. health.php resolves the scope,
+  # it lives in the private atelier repo, and it deploys separately from this
+  # file: asking for ?scope=preview before that deploy lands gets a 400 and
+  # reddens the public category row. The endpoint now accepts both spellings
+  # (ScopeRegistry::PROSPECT_LEGACY), so once it is deployed this becomes a
+  # one-word edit with no window.
   - name: Preview sites
     url: https://bookwithatelier.com/health.php?scope=prospect
     headers:

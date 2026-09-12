@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { reconcile } from '../src/state.js';
-import { dueTargets, escalates, privateTargets, TIERS } from '../src/targets.js';
+import { canonicalTier, dueTargets, escalates, privateTargets, TIERS } from '../src/targets.js';
 import { NORMALISERS, VENDORS, vendorSummary } from '../src/vendors.js';
 import { humanDuration, smsBody } from '../src/alerts.js';
 
@@ -112,10 +112,10 @@ test('degraded waits far longer than a hard failure', () => {
 });
 
 test('a tier with no channel for a severity never alerts on it', () => {
-  const prospect = TIERS.prospect;
+  const preview = TIERS.preview;
   const stuck = { status: 'degraded', since: NOW - 999999, alertedAt: 0, code: 200, reasons: [] };
   assert.equal(
-    reconcile(stuck, degraded(), prospect, NOW).alert,
+    reconcile(stuck, degraded(), preview, NOW).alert,
     null,
     'nobody is acting at 3am on a stale cron for a site whose owner does not know it exists'
   );
@@ -124,53 +124,53 @@ test('a tier with no channel for a severity never alerts on it', () => {
 /**
  * The 2026-09-11 regression, as a test.
  *
- * Twenty-four prospect sites reported `cron_stale` for twelve hours while
+ * Twenty-four preview sites reported `cron_stale` for twelve hours while
  * every cron run fataled on a poisoned container. Prospects are silent on
  * degraded by design, so nobody was told until the front doors began
  * returning 500 the next morning. `cron_dead` is the probe saying "this is
  * not a slow tick"; these tests are the Worker acting on it.
  */
-test('a dead cron on a prospect opens an issue, where a stale one stays silent', () => {
-  const prospect = TIERS.prospect;
+test('a dead cron on a preview site opens an issue, where a stale one stays silent', () => {
+  const preview = TIERS.preview;
   const stuck = { status: 'degraded', since: NOW - 999999, alertedAt: 0, code: 200, reasons: [] };
 
   assert.equal(
-    reconcile(stuck, degraded(['cron_stale']), prospect, NOW).alert,
+    reconcile(stuck, degraded(['cron_stale']), preview, NOW).alert,
     null,
     'late is still not worth waking anyone for'
   );
 
-  const { alert, entry } = reconcile(stuck, degraded(['cron_stale', 'cron_dead']), prospect, NOW);
-  assert.equal(alert.severity, 'fail', 'it takes the fail channels — for prospects, the issue');
+  const { alert, entry } = reconcile(stuck, degraded(['cron_stale', 'cron_dead']), preview, NOW);
+  assert.equal(alert.severity, 'fail', 'it takes the fail channels — for the preview tier, the issue');
   assert.equal(alert.kind, 'degraded', 'but it is not called an outage: the site is serving');
   assert.equal(entry.escalated, true);
-  assert.deepEqual(prospect.channels[alert.severity], ['issue']);
+  assert.deepEqual(preview.channels[alert.severity], ['issue']);
 });
 
 test('an escalated alert uses the fail debounce, not the degraded one', () => {
-  const prospect = TIERS.prospect;
-  // Prospects have degradedAfter 0 — the escalation has to bring its own
+  const preview = TIERS.preview;
+  // The preview tier has degradedAfter 0 — the escalation has to bring its own
   // threshold or a single bad tick would file an issue.
   const brief = { status: 'degraded', since: NOW - 60, alertedAt: 0, code: 200, reasons: [] };
   assert.equal(
-    reconcile(brief, degraded(['cron_stale', 'cron_dead']), prospect, NOW).alert,
+    reconcile(brief, degraded(['cron_stale', 'cron_dead']), preview, NOW).alert,
     null,
     'one minute of it is not yet worth an issue'
   );
 
   const sustained = { status: 'degraded', since: NOW - 3600, alertedAt: 0, code: 200, reasons: [] };
-  assert.ok(reconcile(sustained, degraded(['cron_stale', 'cron_dead']), prospect, NOW).alert);
+  assert.ok(reconcile(sustained, degraded(['cron_stale', 'cron_dead']), preview, NOW).alert);
 });
 
 /**
  * The bug this design would have had. The escalation is driven by the reason
  * list, and by the time the site recovers the reason is gone — so recovery
  * has to read what the ALARM did, not what the verdict says. Routing an
- * escalated prospect's all-clear by status alone sends it to the empty
+ * escalated preview site's all-clear by status alone sends it to the empty
  * degraded channel list and the issue stays open forever.
  */
 test('recovery from an escalated degraded closes the issue it opened', () => {
-  const prospect = TIERS.prospect;
+  const preview = TIERS.preview;
   const announced = {
     status: 'degraded',
     since: NOW - 99999,
@@ -179,14 +179,14 @@ test('recovery from an escalated degraded closes the issue it opened', () => {
     reasons: ['cron_stale', 'cron_dead'],
     escalated: true,
   };
-  const { alert } = reconcile(announced, ok(), prospect, NOW);
+  const { alert } = reconcile(announced, ok(), preview, NOW);
   assert.equal(alert.kind, 'recovered');
   assert.equal(alert.severity, 'fail', 'the all-clear follows the alarm');
-  assert.deepEqual(prospect.channels[alert.severity], ['issue']);
+  assert.deepEqual(preview.channels[alert.severity], ['issue']);
 });
 
-test('recovery from an ordinary degraded is still quiet for a prospect', () => {
-  const prospect = TIERS.prospect;
+test('recovery from an ordinary degraded is still quiet for a preview site', () => {
+  const preview = TIERS.preview;
   const announced = {
     status: 'degraded',
     since: NOW - 99999,
@@ -195,9 +195,9 @@ test('recovery from an ordinary degraded is still quiet for a prospect', () => {
     reasons: ['cron_stale'],
     escalated: false,
   };
-  const { alert } = reconcile(announced, ok(), prospect, NOW);
+  const { alert } = reconcile(announced, ok(), preview, NOW);
   assert.equal(alert.severity, 'degraded');
-  assert.deepEqual(prospect.channels[alert.severity], []);
+  assert.deepEqual(preview.channels[alert.severity], []);
 });
 
 test('escalation only ever applies to degraded, and only to listed reasons', () => {
@@ -225,7 +225,7 @@ test('the tenant is checked every minute and the rest are dealt across their int
     { id: 'tlp', tier: 'tenant', url: 'https://a' },
     { id: 'bwa', tier: 'platform', url: 'https://b' },
     { id: 'studio', tier: 'platform', url: 'https://c' },
-    ...Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, tier: 'prospect', url: `https://p${i}` })),
+    ...Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, tier: 'preview', url: `https://p${i}` })),
   ];
 
   for (let minute = 0; minute < 60; minute++) {
@@ -240,11 +240,11 @@ test('the tenant is checked every minute and the rest are dealt across their int
     );
   }
 
-  // Over any fifteen consecutive minutes every prospect comes up exactly once.
+  // Over any fifteen consecutive minutes every preview site comes up exactly once.
   const seen = new Map();
   for (let minute = 0; minute < 15; minute++) {
     for (const t of dueTargets(targets, minute)) {
-      if (t.tier === 'prospect') {
+      if (t.tier === 'preview') {
         seen.set(t.id, (seen.get(t.id) || 0) + 1);
       }
     }
@@ -260,7 +260,7 @@ test('a malformed private target list never stops the tenant check', () => {
 
   const good = privateTargets({
     PRIVATE_TARGETS: JSON.stringify([
-      { id: 'a', name: 'A', url: 'https://a.example/', tier: 'prospect' },
+      { id: 'a', name: 'A', url: 'https://a.example/', tier: 'preview' },
       { id: 'b', url: 'https://b.example' },
       { url: 'https://no-id.example' },
       null,
@@ -268,8 +268,26 @@ test('a malformed private target list never stops the tenant check', () => {
   });
   assert.equal(good.length, 2);
   assert.equal(good[0].url, 'https://a.example', 'trailing slash stripped so /health.php concatenates cleanly');
-  assert.equal(good[1].tier, 'prospect', 'an unknown or missing tier falls back to the quietest one');
+  assert.equal(good[1].tier, 'preview', 'an unknown or missing tier falls back to the quietest one');
   assert.equal(good[1].name, 'b');
+});
+
+/**
+ * The secret is generated from the production box and pushed by hand, so a
+ * deployed Worker and the PRIVATE_TARGETS it reads can disagree about the
+ * spelling of a tier for as long as it takes somebody to re-run the sync.
+ * `prospect` was that tier's name until 2026-09-12.
+ */
+test('the old tier spelling in PRIVATE_TARGETS still lands in the right tier', () => {
+  assert.equal(canonicalTier('prospect'), 'preview');
+  assert.equal(canonicalTier('tenant'), 'tenant');
+  assert.equal(canonicalTier('nonsense'), 'preview', 'anything unrecognised gets the quietest tier');
+  assert.equal(canonicalTier(undefined), 'preview');
+
+  const [t] = privateTargets({
+    PRIVATE_TARGETS: JSON.stringify([{ id: 'x', url: 'https://x.example', tier: 'prospect' }]),
+  });
+  assert.equal(t.tier, 'preview', 'normalised on the way in, so nothing downstream sees the old name');
 });
 
 test('vendor status is summarised only when a vendor is actually unhappy', () => {

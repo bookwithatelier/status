@@ -72,12 +72,18 @@ for env_file in env/*.env.yml; do
   # Tier comes from env/_monitor-scopes.txt — the SAME file the health
   # endpoint's ?scope= aggregate reads. Deriving it twice from two sources
   # would let the public categories and the private alerting drift apart
-  # silently, which is how a real tenant ends up alerting like a prospect.
-  scope="prospect"
+  # silently, which is how a real tenant ends up alerting like a preview site.
+  #
+  # `prospect` is the pre-2026-09-12 spelling of `preview` and is still
+  # accepted, because this reads a file on a box that may not have been
+  # updated. It is normalised here so the secret only ever carries the
+  # current name.
+  scope="preview"
   if [ -r "env/_monitor-scopes.txt" ]; then
     found="\$(awk -v d="\$dir" '\$1==d && \$2!="" {print \$2; exit}' env/_monitor-scopes.txt)"
     case "\$found" in
-      tenant|platform|prospect) scope="\$found" ;;
+      tenant|platform|preview) scope="\$found" ;;
+      prospect) scope="preview" ;;
     esac
   fi
 
@@ -97,8 +103,8 @@ REMOTE
 # stable; a hostname is neither. studio.bookwithatelier.com's first declared
 # host is find.bookwithatelier.com — the consumer directory surface, not the
 # control plane — so a hostname filter silently let it through as a duplicate
-# prospect, which is both a wasted check and a second set of alerts for one
-# site.
+# preview site, which is both a wasted check and a second set of alerts for
+# one site.
 #
 # The id stays the directory too: a tenant changing domains is a one-line edit
 # in their .sites.yml, and the monitor's state and any open incident issue
