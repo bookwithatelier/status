@@ -96,6 +96,16 @@ Four rows, and only two of them name anything:
 **No customer site is named anywhere in this repository.** See the next
 section.
 
+Below the rows, a **"Services we depend on"** strip shows what each provider
+we build on — Cloudflare, Stripe, Twilio, Postmark, GitHub, Anthropic,
+Clover, Shopify, Google Calendar, iCloud Calendar — is reporting on its own
+status page. It is read from the Worker's public `/vendors.json` (the same
+snapshot the Worker attaches to every alert) by a small script in
+`.upptimerc.yml` under `status-website.customBodyHtml`, which also holds the
+one value that has to be set by hand: the Worker's `workers.dev` hostname.
+Context, never a verdict: a provider can say all is well while one account
+is broken, which is why the rows above are what is actually measured.
+
 ### 3. The Cloudflare Worker — minute-level detection and SMS
 
 Source in [`worker/`](worker/). One cron trigger every minute; per-tier
@@ -224,6 +234,12 @@ curl -H "Authorization: Bearer $DASHBOARD_TOKEN" https://atelier-monitor.<subdom
 ```
 
 That endpoint is 404 without the token, because it lists the private targets.
+
+`/vendors.json` on the same host is the exception: public, cached for five
+minutes, and built from the vendor list alone (`publicSnapshot()` in
+`src/vendors.js`), so it cannot name a target. Put its URL in
+`.upptimerc.yml` (`customBodyHtml`, the `data-src` attribute) and the status
+page's vendor strip comes alive on the next site build.
 
 ### The production box
 

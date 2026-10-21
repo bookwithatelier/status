@@ -29,7 +29,7 @@
 import { allTargets, dueTargets, TIERS } from './targets.js';
 import { probe } from './probe.js';
 import { loadState, saveState, reconcile } from './state.js';
-import { vendorStatuses, vendorSummary } from './vendors.js';
+import { publicSnapshot, vendorStatuses, vendorSummary } from './vendors.js';
 import { fileIssue, issueBody, sendSms, smsBody } from './alerts.js';
 import { sendEmail } from './email.js';
 
@@ -51,11 +51,17 @@ export default {
    * design exists to keep unpublished. With no token configured the endpoint
    * refuses rather than opening up.
    */
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === '/healthz') {
       return new Response('ok\n', { headers: { 'content-type': 'text/plain' } });
+    }
+
+    // The one public route. See vendorsResponse() for why it is safe to
+    // serve without the token when nothing else here is.
+    if (url.pathname === '/vendors.json') {
+      return vendorsResponse(request, env, ctx);
     }
 
     const expected = env.DASHBOARD_TOKEN;
@@ -107,6 +113,12 @@ export async function runChecks(env, nowMs = Date.now()) {
     // year.
     vendorsChanged = JSON.stringify(state.__vendors || {}) !== JSON.stringify(vendors);
     state.__vendors = vendors;
+    if (vendorsChanged) {
+      // Rides along with the write that is happening anyway. This is the
+      // only timestamp the public snapshot can honestly carry — see
+      // publicSnapshot() for why it is "last changed", not "last checked".
+      state.__vendors_at = now;
+    }
   }
 
   const results = await Promise.all(
@@ -188,4 +200,51 @@ function json(data) {
   return new Response(JSON.stringify(data, null, 2), {
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
+}
+
+/** How long a browser or the edge may hold /vendors.json. The cron refreshes every five minutes. */
+const VENDORS_MAX_AGE = 300;
+
+/**
+ * GET /vendors.json — the vendor snapshot for the public status page.
+ *
+ * Unauthenticated on purpose, and the only route that is. It is safe because
+ * of what it is built FROM, not what it filters OUT: publicSnapshot() is
+ * handed the `__vendors` map alone and shapes its output from the VENDORS
+ * list, so there is no code path by which a target hostname — the thing the
+ * rest of this Worker exists to keep unpublished — can reach the response.
+ * Keep it that way: never pass `state` itself to anything on this path.
+ *
+ * Cached at the edge for VENDORS_MAX_AGE so that page views do not turn into
+ * KV reads. A page refresh on a quiet day should cost this Worker nothing.
+ */
+async function vendorsResponse(request, env, ctx) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method not allowed\n', { status: 405, headers: { allow: 'GET, HEAD' } });
+  }
+
+  const cache = globalThis.caches?.default;
+  const cacheKey = new Request(new URL('/vendors.json', request.url).toString(), { method: 'GET' });
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) {
+      return hit;
+    }
+  }
+
+  const state = await loadState(env);
+  const body = publicSnapshot(state.__vendors, state.__vendors_at);
+  const response = new Response(JSON.stringify(body, null, 2), {
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': `public, max-age=${VENDORS_MAX_AGE}`,
+      'access-control-allow-origin': '*',
+    },
+  });
+
+  if (cache) {
+    const store = cache.put(cacheKey, response.clone());
+    ctx?.waitUntil ? ctx.waitUntil(store) : await store;
+  }
+  return response;
 }

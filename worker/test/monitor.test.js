@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 
 import { reconcile } from '../src/state.js';
 import { canonicalTier, dueTargets, escalates, privateTargets, TIERS } from '../src/targets.js';
-import { NORMALISERS, VENDORS, vendorSummary } from '../src/vendors.js';
+import { NORMALISERS, VENDORS, publicSnapshot, vendorSummary } from '../src/vendors.js';
 import { humanDuration, smsBody } from '../src/alerts.js';
 
 const NOW = 1_800_000_000;
@@ -374,4 +374,156 @@ test('every vendor declares a shape that has a normaliser', () => {
       `${vendor.id} declares shape "${vendor.shape}" with no normaliser`
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// The two product-family feeds. Google and Apple publish every product's
+// incidents in one document, so the normaliser has to pick out the products
+// calendar sync actually touches — and a Gmail outage must not paint the
+// calendar row red.
+// ---------------------------------------------------------------------------
+
+const googleVendor = VENDORS.find((v) => v.id === 'google');
+const appleVendor = VENDORS.find((v) => v.id === 'apple');
+
+test('google: only an open incident on a product we use counts', () => {
+  const closed = { service_name: 'Google Calendar', status_impact: 'SERVICE_OUTAGE', begin: 'x', end: 'y' };
+  const otherProduct = { service_name: 'Gmail', status_impact: 'SERVICE_OUTAGE', begin: 'x' };
+  const open = {
+    service_name: 'Google Calendar',
+    status_impact: 'SERVICE_DISRUPTION',
+    begin: 'x',
+    external_desc: '**Summary:**\nCalendar invites are delayed.\n**Description:**\nmore',
+  };
+
+  assert.equal(NORMALISERS.google([], googleVendor).indicator, 'none');
+  assert.equal(NORMALISERS.google([closed, otherProduct], googleVendor).indicator, 'none');
+  const result = NORMALISERS.google([closed, otherProduct, open], googleVendor);
+  assert.equal(result.indicator, 'minor');
+  assert.equal(result.description, 'Calendar invites are delayed.', 'the headline is the first line, without the markdown label');
+});
+
+test('google: a multi-product incident is matched through its affected products', () => {
+  const multi = {
+    service_name: 'Multiple Products',
+    status_impact: 'SERVICE_OUTAGE',
+    begin: 'x',
+    affected_products: [{ title: 'Gmail' }, { title: 'Google Calendar' }],
+  };
+  assert.equal(NORMALISERS.google([multi], googleVendor).indicator, 'major');
+});
+
+test('google: an impact word we have not seen, or a body that is not a list, is unknown', () => {
+  const odd = { service_name: 'Google Calendar', status_impact: 'SERVICE_WOBBLE', begin: 'x' };
+  assert.equal(NORMALISERS.google([odd], googleVendor).indicator, 'unknown');
+  assert.equal(NORMALISERS.google({ incidents: [] }, googleVendor).indicator, 'unknown');
+  assert.equal(NORMALISERS.google(null, googleVendor).indicator, 'unknown');
+});
+
+test('apple: only a live event on a service we use counts', () => {
+  const feed = (events, serviceName = 'iCloud Calendar') => ({
+    services: [
+      { serviceName: 'Apple TV', events: [{ statusType: 'Outage', eventStatus: 'ongoing', message: 'TV is down' }] },
+      { serviceName, events },
+    ],
+  });
+
+  assert.equal(NORMALISERS.apple(feed([]), appleVendor).indicator, 'none', 'an Apple TV outage is not our problem');
+  assert.equal(
+    NORMALISERS.apple(feed([{ statusType: 'Outage', eventStatus: 'resolved', message: 'was down' }]), appleVendor).indicator,
+    'none'
+  );
+  assert.equal(
+    NORMALISERS.apple(feed([{ statusType: 'Maintenance', eventStatus: 'upcoming', message: 'later' }]), appleVendor).indicator,
+    'none',
+    'scheduled maintenance that has not started is not an incident'
+  );
+  const live = NORMALISERS.apple(
+    feed([{ statusType: 'Issue', eventStatus: 'ongoing', message: 'Users may be unable to sync.' }]),
+    appleVendor
+  );
+  assert.equal(live.indicator, 'minor');
+  assert.equal(live.description, 'iCloud Calendar: Users may be unable to sync.');
+  assert.equal(
+    NORMALISERS.apple(feed([{ statusType: 'Outage', eventStatus: 'ongoing' }], 'iCloud Account & Sign In'), appleVendor).indicator,
+    'major',
+    'sign-in is upstream of every CalDAV request'
+  );
+});
+
+test('apple: a new event status is treated as live, and a new status type as unknown', () => {
+  const feed = (event) => ({ services: [{ serviceName: 'iCloud Calendar', events: [event] }] });
+  assert.equal(
+    NORMALISERS.apple(feed({ statusType: 'Outage', eventStatus: 'escalated' }), appleVendor).indicator,
+    'major',
+    'an unrecognised lifecycle word must not read as resolved'
+  );
+  assert.equal(NORMALISERS.apple(feed({ statusType: 'Hiccup', eventStatus: 'ongoing' }), appleVendor).indicator, 'unknown');
+  assert.equal(NORMALISERS.apple({ services: 'nope' }, appleVendor).indicator, 'unknown');
+  assert.equal(NORMALISERS.apple(undefined, appleVendor).indicator, 'unknown');
+});
+
+test('the worst live incident wins', () => {
+  const feed = {
+    services: [
+      {
+        serviceName: 'iCloud Calendar',
+        events: [
+          { statusType: 'Issue', eventStatus: 'ongoing', message: 'slow' },
+          { statusType: 'Outage', eventStatus: 'ongoing', message: 'down' },
+        ],
+      },
+    ],
+  };
+  assert.equal(NORMALISERS.apple(feed, appleVendor).indicator, 'major');
+});
+
+// ---------------------------------------------------------------------------
+// The public snapshot. This is the one thing the Worker publishes without a
+// token, so its shape is pinned here: a change that lets anything else
+// through must fail a test, not a code review.
+// ---------------------------------------------------------------------------
+
+test('the public snapshot carries vendors only, in declaration order, and never anything else', () => {
+  const stored = {
+    twilio: { name: 'Twilio', indicator: 'major', description: 'SMS delays', secret: 'should not pass' },
+    cloudflare: { name: 'Cloudflare', indicator: 'none', description: 'All Systems Operational' },
+    // A key that is not a declared vendor — e.g. something a future refactor
+    // stores alongside — must not surface.
+    tlp: { url: 'https://timberlodgeparlor.com', status: 'fail' },
+  };
+
+  const snapshot = publicSnapshot(stored, 1792612800);
+
+  assert.deepEqual(Object.keys(snapshot), ['as_of', 'vendors']);
+  assert.equal(snapshot.as_of, '2026-10-21T20:00:00.000Z');
+  assert.deepEqual(
+    snapshot.vendors.map((v) => v.id),
+    VENDORS.map((v) => v.id),
+    'order is the VENDORS list, not whatever the stored object happens to hold'
+  );
+  for (const row of snapshot.vendors) {
+    assert.deepEqual(Object.keys(row), ['id', 'name', 'role', 'indicator', 'description']);
+  }
+  assert.equal(snapshot.vendors.find((v) => v.id === 'twilio').indicator, 'major');
+  assert.equal(snapshot.vendors.find((v) => v.id === 'anthropic').indicator, 'unknown', 'a vendor not yet in the snapshot is unknown, not omitted');
+  assert.ok(!JSON.stringify(snapshot).includes('timberlodgeparlor'), 'nothing outside the vendor list leaks');
+  assert.ok(!JSON.stringify(snapshot).includes('should not pass'));
+});
+
+test('the public snapshot survives an empty or malformed store', () => {
+  assert.equal(publicSnapshot(undefined, undefined).as_of, null);
+  assert.equal(publicSnapshot(undefined, undefined).vendors.length, VENDORS.length);
+  assert.equal(publicSnapshot({ twilio: 'garbage' }, 0).vendors.find((v) => v.id === 'twilio').indicator, 'unknown');
+});
+
+test('vendor URLs are their final hosts — a redirect is one more thing to break', () => {
+  for (const vendor of VENDORS) {
+    assert.ok(vendor.url.startsWith('https://'), `${vendor.id} must be fetched over https`);
+    assert.ok(vendor.role, `${vendor.id} needs a one-line role for the public strip`);
+  }
+  const hosts = VENDORS.map((v) => new URL(v.url).host);
+  assert.ok(!hosts.includes('status.anthropic.com'), 'Anthropic moved its status page to status.claude.com');
+  assert.ok(!hosts.includes('status.shopify.com'), 'Shopify redirects to www.shopifystatus.com');
+  assert.equal(new Set(VENDORS.map((v) => v.id)).size, VENDORS.length, 'vendor ids are unique');
 });

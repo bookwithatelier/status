@@ -12,7 +12,7 @@ of the code.
 | `src/targets.js` | What is watched, the public/private split, per-tier policy |
 | `src/probe.js` | How one site is checked, and the front-door second opinion |
 | `src/state.js` | What is remembered, and the debounce/renotify rules |
-| `src/vendors.js` | Statuspage indicators — context, never a signal |
+| `src/vendors.js` | Vendor status feeds — context, never a signal; also the shape of public `/vendors.json` |
 | `src/alerts.js` | Twilio and GitHub issues, and the wording |
 
 ## Three things not to change without reading the comment first
@@ -47,4 +47,7 @@ To force a tick without waiting for the cron:
 ```bash
 curl -H "Authorization: Bearer $DASHBOARD_TOKEN" \
   https://atelier-monitor.<subdomain>.workers.dev/run
+
+# The one public route — what the status page's vendor strip reads:
+curl https://atelier-monitor.<subdomain>.workers.dev/vendors.json
 ```
