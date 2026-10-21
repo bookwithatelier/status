@@ -159,10 +159,11 @@ status-website:
   # what is expected, nothing is rendered. A half-broken strip on a status
   # page is worse than none.
   #
-  # ONE VALUE TO SET: data-src below must be the Worker's public hostname —
-  # https://atelier-monitor.<subdomain>.workers.dev/vendors.json, where
-  # <subdomain> is the account's workers.dev subdomain (`npx wrangler whoami`
-  # or the Workers dashboard). It is not committed anywhere else.
+  # data-src below is the Worker's public hostname. The account's workers.dev
+  # subdomain happens to be `atelier-monitor` too, hence the doubled name; it
+  # is shown on the Worker's Settings page in the Cloudflare dashboard. The
+  # script renders nothing until that URL answers, so a Worker that has not
+  # been deployed with the /vendors.json route leaves the page as it was.
   customBodyHtml: |
     <style>
       .atelier-vendors { margin-top: 2.5rem; }
@@ -185,7 +186,7 @@ status-website:
       .atelier-vendors .atelier-vendors__desc { font-size: 0.85em; }
       .atelier-vendors .atelier-vendors__foot { margin: 0.75rem 0 0 0; font-size: 0.8em; opacity: 0.7; }
     </style>
-    <script data-src="https://atelier-monitor.REPLACE-ME.workers.dev/vendors.json">
+    <script data-src="https://atelier-monitor.atelier-monitor.workers.dev/vendors.json">
       (function () {
         var src = document.currentScript && document.currentScript.getAttribute('data-src');
         if (!src || src.indexOf('REPLACE-ME') !== -1) return;
