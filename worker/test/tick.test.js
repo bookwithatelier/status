@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runChecks } from '../src/index.js';
+import worker, { runChecks } from '../src/index.js';
 
 /** A minute at which only the tenant is due (see dueTargets). */
 const MINUTE_3 = Date.UTC(2026, 7, 28, 9, 3, 0);
@@ -257,4 +257,120 @@ test('a preview site with a merely stale cron files nothing', async () => {
     0,
     'a slow tick on a preview site is still nobody\'s emergency'
   );
+});
+
+// ---------------------------------------------------------------------------
+// The public route. The whole design of this Worker is that the target list
+// is never published, and /vendors.json is the one door that opens without a
+// token — so these pin what can and cannot come through it.
+// ---------------------------------------------------------------------------
+
+/** A minute at which the vendor sweep runs (every fifth minute). */
+const MINUTE_5 = Date.UTC(2026, 7, 28, 9, 5, 0);
+
+function seededKv() {
+  const kv = fakeKv();
+  kv.store.set(
+    'monitor-state-v1',
+    JSON.stringify({
+      tlp: { url: 'https://timberlodgeparlor.com/health.php', status: 'fail', since: 1 },
+      t1234abcd: { url: 'https://secret-prospect.atelier.salon/health.php', status: 'degraded' },
+      __vendors: {
+        twilio: { name: 'Twilio', indicator: 'major', description: 'Message delivery delays' },
+        cloudflare: { name: 'Cloudflare', indicator: 'none', description: 'All Systems Operational' },
+      },
+      __vendors_at: 1792612800,
+    })
+  );
+  return kv;
+}
+
+test('/vendors.json is public, cacheable, cross-origin readable, and names no target', async () => {
+  delete globalThis.caches;
+  const kv = seededKv();
+  const response = await worker.fetch(new Request('https://monitor.example/vendors.json'), baseEnv(kv), {
+    waitUntil() {},
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('access-control-allow-origin'), '*', 'the status page is on another origin');
+  assert.match(response.headers.get('cache-control'), /max-age=300/);
+
+  const text = await response.text();
+  const body = JSON.parse(text);
+  assert.equal(body.as_of, '2026-10-21T20:00:00.000Z');
+  assert.equal(body.vendors.find((v) => v.id === 'twilio').indicator, 'major');
+  assert.ok(!text.includes('timberlodgeparlor'), 'the named tenant must not appear');
+  assert.ok(!text.includes('secret-prospect'), 'an unlisted target must not appear');
+  assert.ok(!text.includes('t1234abcd'), 'nor its site directory');
+  assert.ok(!text.includes('health.php'));
+});
+
+test('/vendors.json with nothing stored yet is every vendor unknown, not an error', async () => {
+  delete globalThis.caches;
+  const response = await worker.fetch(new Request('https://monitor.example/vendors.json'), baseEnv(fakeKv()), {
+    waitUntil() {},
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.as_of, null);
+  assert.ok(body.vendors.length > 0);
+  assert.ok(body.vendors.every((v) => v.indicator === 'unknown'));
+});
+
+test('/vendors.json is served from the edge cache when there is one', async () => {
+  const puts = [];
+  let stored = null;
+  globalThis.caches = {
+    default: {
+      match: async () => stored,
+      put: async (key, res) => {
+        puts.push(key.url);
+        stored = res;
+      },
+    },
+  };
+  try {
+    const env = baseEnv(seededKv());
+    const ctx = { waitUntil: (p) => p };
+    await worker.fetch(new Request('https://monitor.example/vendors.json?x=1'), env, ctx);
+    assert.deepEqual(puts, ['https://monitor.example/vendors.json'], 'cached under one key, whatever the query string');
+
+    env.STATE.get = async () => {
+      throw new Error('KV must not be read on a cache hit');
+    };
+    const again = await worker.fetch(new Request('https://monitor.example/vendors.json'), env, ctx);
+    assert.equal((await again.json()).vendors.find((v) => v.id === 'twilio').indicator, 'major');
+  } finally {
+    delete globalThis.caches;
+  }
+});
+
+test('/vendors.json refuses anything but GET, and the rest of the Worker stays shut', async () => {
+  delete globalThis.caches;
+  const env = baseEnv(seededKv());
+  const ctx = { waitUntil() {} };
+  const post = await worker.fetch(new Request('https://monitor.example/vendors.json', { method: 'POST' }), env, ctx);
+  assert.equal(post.status, 405);
+
+  const root = await worker.fetch(new Request('https://monitor.example/'), env, ctx);
+  assert.equal(root.status, 404, 'the state view is still behind the token');
+  assert.ok(!(await root.text()).includes('secret-prospect'));
+});
+
+test('a vendor change stamps the snapshot, and a stable one does not write', async () => {
+  const kv = fakeKv();
+  // Every vendor URL is unmatched here, so each resolves to unknown — which
+  // differs from the empty snapshot and therefore counts as a change.
+  stubFetch({ 'health.php': { status: 200, body: healthy } });
+
+  await runChecks(baseEnv(kv), MINUTE_5);
+  const first = JSON.parse(kv.store.get('monitor-state-v1'));
+  assert.equal(first.__vendors_at, Math.floor(MINUTE_5 / 1000));
+  assert.ok(Object.values(first.__vendors).every((v) => v.indicator === 'unknown'));
+
+  const writes = kv.store.size;
+  kv.put = async () => assert.fail('an unchanged vendor snapshot must not cost a KV write');
+  await runChecks(baseEnv(kv), MINUTE_5 + 5 * 60 * 1000);
+  assert.equal(kv.store.size, writes);
 });

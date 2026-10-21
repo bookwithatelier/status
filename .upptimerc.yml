@@ -143,6 +143,112 @@ status-website:
     - title: GitHub
       href: https://github.com/$OWNER/$REPO
 
+  # The "Services we depend on" strip. Rendered by the script below from the
+  # Worker's public /vendors.json (worker/src/index.js, vendorsResponse) —
+  # the same snapshot the Worker already stores for alert context, nothing
+  # more. It is appended to the end of <main> after the page has hydrated,
+  # so the platform's own rows always come first and a vendor's bad day
+  # never pushes them down.
+  #
+  # Why not Upptime rows pointing at the vendor status feeds: Upptime reports
+  # up/down by HTTP status, and a Statuspage feed answers 200 during a major
+  # incident. The Worker reads the body and normalises it; this just shows
+  # the result.
+  #
+  # Failure mode is silence: if the Worker is unreachable or the JSON is not
+  # what is expected, nothing is rendered. A half-broken strip on a status
+  # page is worse than none.
+  #
+  # data-src below is the Worker's public hostname. The account's workers.dev
+  # subdomain happens to be `atelier-monitor` too, hence the doubled name; it
+  # is shown on the Worker's Settings page in the Cloudflare dashboard. The
+  # script renders nothing until that URL answers, so a Worker that has not
+  # been deployed with the /vendors.json route leaves the page as it was.
+  customBodyHtml: |
+    <style>
+      .atelier-vendors { margin-top: 2.5rem; }
+      .atelier-vendors h2 { font-size: 1.25em; margin-bottom: 0.25em; }
+      .atelier-vendors .atelier-vendors__lead { margin: 0 0 1rem 0; opacity: 0.85; font-size: 0.95em; }
+      .atelier-vendors ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+      .atelier-vendors li { padding: 0.75rem 1rem; border-radius: 0.2rem; border: 1px solid var(--card-border-color); border-left-width: 4px; background: var(--card-background-color); display: flex; flex-direction: column; gap: 0.15rem; }
+      .atelier-vendors li.is-up { border-left-color: var(--up-border-left-color); }
+      .atelier-vendors li.is-degraded { border-left-color: var(--degraded-border-left-color); }
+      .atelier-vendors li.is-down { border-left-color: var(--down-border-left-color); }
+      .atelier-vendors li.is-unknown { border-left-color: var(--card-border-color); }
+      .atelier-vendors .atelier-vendors__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+      .atelier-vendors .atelier-vendors__name { font-weight: 500; }
+      .atelier-vendors .atelier-vendors__tag { font-size: 0.75em; padding: 0.1em 0.5em; border-radius: 0.2rem; white-space: nowrap; color: var(--tag-color); background: var(--card-border-color); }
+      .atelier-vendors li.is-up .atelier-vendors__tag { background: var(--tag-up-background-color); }
+      .atelier-vendors li.is-degraded .atelier-vendors__tag { background: var(--tag-degraded-background-color); }
+      .atelier-vendors li.is-down .atelier-vendors__tag { background: var(--tag-down-background-color); }
+      .atelier-vendors li.is-unknown .atelier-vendors__tag { color: var(--body-text-color); }
+      .atelier-vendors .atelier-vendors__role { font-size: 0.85em; opacity: 0.8; }
+      .atelier-vendors .atelier-vendors__desc { font-size: 0.85em; }
+      .atelier-vendors .atelier-vendors__foot { margin: 0.75rem 0 0 0; font-size: 0.8em; opacity: 0.7; }
+    </style>
+    <script data-src="https://atelier-monitor.atelier-monitor.workers.dev/vendors.json">
+      (function () {
+        var src = document.currentScript && document.currentScript.getAttribute('data-src');
+        if (!src || src.indexOf('REPLACE-ME') !== -1) return;
+        var LABEL = { none: 'Operational', minor: 'Degraded', major: 'Partial outage', critical: 'Major outage', unknown: 'No data' };
+        var CLASS = { none: 'is-up', minor: 'is-degraded', major: 'is-down', critical: 'is-down' };
+        function el(tag, cls, text) {
+          var node = document.createElement(tag);
+          if (cls) node.className = cls;
+          if (text) node.textContent = text;
+          return node;
+        }
+        function ago(iso) {
+          var ms = Date.now() - new Date(iso).getTime();
+          if (!(ms >= 0)) return '';
+          var m = Math.round(ms / 60000);
+          if (m < 2) return 'just now';
+          if (m < 60) return m + ' minutes ago';
+          var h = Math.round(m / 60);
+          if (h < 48) return h + (h === 1 ? ' hour ago' : ' hours ago');
+          return Math.round(h / 24) + ' days ago';
+        }
+        function render(data) {
+          if (!data || !Array.isArray(data.vendors) || !data.vendors.length) return;
+          var section = el('section', 'atelier-vendors');
+          section.appendChild(el('h2', null, 'Services we depend on'));
+          section.appendChild(el('p', 'atelier-vendors__lead',
+            'What each provider reports on its own status page, checked every five minutes. ' +
+            'This is context for the rows above, not a verdict on them: a provider can say all is well while one account is broken, and the rows above are what we actually measure.'));
+          var list = el('ul');
+          data.vendors.forEach(function (v) {
+            var ind = LABEL.hasOwnProperty(v.indicator) ? v.indicator : 'unknown';
+            var item = el('li', CLASS[ind] || 'is-unknown');
+            var head = el('div', 'atelier-vendors__head');
+            head.appendChild(el('span', 'atelier-vendors__name', v.name || v.id));
+            head.appendChild(el('span', 'atelier-vendors__tag', LABEL[ind]));
+            item.appendChild(head);
+            if (v.role) item.appendChild(el('span', 'atelier-vendors__role', v.role));
+            if (ind !== 'none' && ind !== 'unknown' && v.description) item.appendChild(el('span', 'atelier-vendors__desc', v.description));
+            list.appendChild(item);
+          });
+          section.appendChild(list);
+          var when = data.as_of ? ago(data.as_of) : '';
+          if (when) section.appendChild(el('p', 'atelier-vendors__foot', 'Last change ' + when + '.'));
+          var main = document.querySelector('main.container') || document.querySelector('main');
+          if (main) main.appendChild(section);
+          else document.body.appendChild(section);
+        }
+        function go() {
+          // After load, and a beat later: Sapper hydrates <main> on load and
+          // drops nodes it did not render, so the strip waits until that is done.
+          setTimeout(function () {
+            fetch(src, { cache: 'default' })
+              .then(function (r) { return r.ok ? r.json() : null; })
+              .then(render)
+              .catch(function (e) { if (window.console) console.warn('vendor strip:', e); });
+          }, 600);
+        }
+        if (document.readyState === 'complete') go();
+        else window.addEventListener('load', go);
+      })();
+    </script>
+
 # GitHub `schedule:` is best-effort and queues under load — five minutes is
 # the nominal interval and 15 is a routine one. That latency is accepted here
 # and covered by the Cloudflare Worker, which checks every minute. The two
